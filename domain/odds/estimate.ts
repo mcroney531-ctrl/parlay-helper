@@ -1,0 +1,98 @@
+import { americanToDecimal, decimalToAmerican, roundAmerican } from "./conversion";
+
+export type LegPriceSource = "current" | "capture" | "unavailable";
+
+export type LegPriceInput = {
+  ideaId: string;
+  eventId: string | null;
+  currentOddsAmerican: number | null;
+  captureOddsAmerican: number | null;
+};
+
+export type ResolvedLegPrice = {
+  ideaId: string;
+  eventId: string | null;
+  oddsAmerican: number | null;
+  source: LegPriceSource;
+};
+
+/**
+ * Resolves which price a leg's estimate should use. Never silently
+ * substitutes: the result always names its source so the UI can say
+ * "using capture price" or "cannot be calculated" instead of quietly
+ * blending values.
+ */
+export function resolveLegPrice(leg: LegPriceInput): ResolvedLegPrice {
+  if (leg.currentOddsAmerican !== null) {
+    return { ideaId: leg.ideaId, eventId: leg.eventId, oddsAmerican: leg.currentOddsAmerican, source: "current" };
+  }
+  if (leg.captureOddsAmerican !== null) {
+    return { ideaId: leg.ideaId, eventId: leg.eventId, oddsAmerican: leg.captureOddsAmerican, source: "capture" };
+  }
+  return { ideaId: leg.ideaId, eventId: leg.eventId, oddsAmerican: null, source: "unavailable" };
+}
+
+export type CombinedEstimate =
+  | {
+      ok: true;
+      decimalOdds: number;
+      americanOdds: number;
+      legSources: ResolvedLegPrice[];
+    }
+  | {
+      ok: false;
+      reason: "no_legs" | "missing_price";
+      unavailableLegIds: string[];
+      legSources: ResolvedLegPrice[];
+    };
+
+export function calculateCombinedEstimate(legs: LegPriceInput[]): CombinedEstimate {
+  const resolved = legs.map(resolveLegPrice);
+  if (resolved.length === 0) {
+    return { ok: false, reason: "no_legs", unavailableLegIds: [], legSources: resolved };
+  }
+  const unavailable = resolved.filter((leg) => leg.source === "unavailable");
+  if (unavailable.length > 0) {
+    return {
+      ok: false,
+      reason: "missing_price",
+      unavailableLegIds: unavailable.map((leg) => leg.ideaId),
+      legSources: resolved,
+    };
+  }
+  const decimalOdds = resolved.reduce(
+    (product, leg) => product * americanToDecimal(leg.oddsAmerican as number),
+    1,
+  );
+  return {
+    ok: true,
+    decimalOdds,
+    americanOdds: roundAmerican(decimalToAmerican(decimalOdds)),
+    legSources: resolved,
+  };
+}
+
+export function calculatePayoutCents(stakeCents: number, decimalOdds: number): number {
+  return Math.round(stakeCents * decimalOdds);
+}
+
+/** Legs sharing an event ID trigger the SGP repricing caveat and the correlation indicator. */
+export function groupLegsByEvent(
+  legs: { ideaId: string; eventId: string | null }[],
+): Map<string, string[]> {
+  const groups = new Map<string, string[]>();
+  for (const leg of legs) {
+    if (!leg.eventId) continue;
+    const group = groups.get(leg.eventId) ?? [];
+    group.push(leg.ideaId);
+    groups.set(leg.eventId, group);
+  }
+  for (const [eventId, ideaIds] of groups) {
+    if (ideaIds.length < 2) groups.delete(eventId);
+  }
+  return groups;
+}
+
+export function hasSameGameCombination(legs: { eventId: string | null }[]): boolean {
+  return groupLegsByEvent(legs.map((leg, i) => ({ ideaId: String(i), eventId: leg.eventId }))).size > 0;
+}
