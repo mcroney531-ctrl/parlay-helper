@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { CandidateParlay } from "@/domain/types";
-import { cloneCandidate, createCandidate, deleteCandidate } from "@/domain/candidates/candidateService";
+import { cloneCandidate, createCandidate, deleteCandidate, renameCandidate } from "@/domain/candidates/candidateService";
 import { useData } from "@/app/DataProvider";
 
 export function CandidateSwitcher({
@@ -16,6 +16,8 @@ export function CandidateSwitcher({
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [sportsbook, setSportsbook] = useState("");
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -26,6 +28,19 @@ export function CandidateSwitcher({
     setCreating(false);
     setName("");
     setSportsbook("");
+  }
+
+  function startRename(candidate: CandidateParlay) {
+    setRenameValue(candidate.name);
+    setRenamingId(candidate.id);
+  }
+
+  async function handleRenameSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!renamingId || !renameValue.trim()) return;
+    await renameCandidate(renamingId, renameValue);
+    await refreshCandidates();
+    setRenamingId(null);
   }
 
   async function handleClone(candidate: CandidateParlay) {
@@ -82,6 +97,17 @@ export function CandidateSwitcher({
             style={{ color: "var(--accent)" }}
             onClick={() => {
               const candidate = candidates.find((c) => c.id === activeId);
+              if (candidate) startRename(candidate);
+            }}
+          >
+            Rename candidate
+          </button>
+          <button
+            type="button"
+            className="underline"
+            style={{ color: "var(--accent)" }}
+            onClick={() => {
+              const candidate = candidates.find((c) => c.id === activeId);
               if (candidate) handleClone(candidate);
             }}
           >
@@ -99,6 +125,31 @@ export function CandidateSwitcher({
             Delete candidate
           </button>
         </div>
+      )}
+
+      {renamingId && (
+        <form onSubmit={handleRenameSubmit} className="flex flex-wrap items-end gap-2 rounded-lg border p-3" style={{ borderColor: "var(--border)" }}>
+          <label className="flex flex-col gap-1 text-xs font-medium" style={{ color: "var(--muted)" }}>
+            New name
+            <input
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              className="rounded-md border px-2 py-1.5 text-sm"
+              style={{ borderColor: "var(--border)", background: "var(--surface)" }}
+              autoFocus
+            />
+          </label>
+          <button
+            type="submit"
+            className="min-h-[36px] rounded-md px-3 py-1.5 text-sm font-semibold"
+            style={{ background: "var(--accent)", color: "var(--accent-foreground)" }}
+          >
+            Save name
+          </button>
+          <button type="button" onClick={() => setRenamingId(null)} className="min-h-[36px] rounded-md border px-3 py-1.5 text-sm">
+            Cancel
+          </button>
+        </form>
       )}
 
       {creating && (

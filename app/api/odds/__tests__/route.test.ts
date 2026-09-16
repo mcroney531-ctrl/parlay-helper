@@ -74,18 +74,19 @@ describe("POST /api/odds", () => {
     expect(response.status).toBe(413);
   });
 
-  it("rate-limits repeated requests from the same client", async () => {
+  it("rate-limits repeated requests and returns Retry-After once limited", async () => {
     const makeRequest = () =>
       new Request("http://localhost/api/odds", {
         method: "POST",
-        headers: { "x-forwarded-for": "203.0.113.9" },
         body: JSON.stringify({ sportsbook: "FanDuel", legs: [{ ideaId: "1", league: "NFL", eventId: "evt-a", marketKey: "player_reception_yds" }] }),
       });
 
-    let lastStatus = 0;
-    for (let i = 0; i < 25; i++) {
-      lastStatus = (await POST(makeRequest())).status;
+    let lastResponse = await POST(makeRequest());
+    for (let i = 0; i < 24; i++) {
+      lastResponse = await POST(makeRequest());
     }
-    expect(lastStatus).toBe(429);
+    expect(lastResponse.status).toBe(429);
+    const retryAfter = Number(lastResponse.headers.get("Retry-After"));
+    expect(retryAfter).toBeGreaterThan(0);
   });
 });

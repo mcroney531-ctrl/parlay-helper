@@ -2,10 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { listUpcomingEvents } from "@/integrations/odds-api/events";
 import { sportKeyForLeague } from "@/integrations/odds-api/sportKeys";
-import { checkRateLimit, clientKeyFromRequest } from "@/integrations/rateLimit";
-
-const RATE_LIMIT_MAX_REQUESTS = 20;
-const RATE_LIMIT_WINDOW_MS = 60_000;
+import { DEFAULT_MAX_REQUESTS, DEFAULT_WINDOW_MS, checkRateLimit, clientKeyFromRequest } from "@/integrations/rateLimit";
 
 const querySchema = z.object({
   league: z.string().trim().min(1).max(40),
@@ -13,8 +10,12 @@ const querySchema = z.object({
 
 export async function GET(request: Request) {
   const clientKey = clientKeyFromRequest(request);
-  if (!checkRateLimit(clientKey, RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_MS)) {
-    return NextResponse.json({ error: "Too many requests. Try again shortly." }, { status: 429 });
+  const rateLimit = checkRateLimit(clientKey, DEFAULT_MAX_REQUESTS, DEFAULT_WINDOW_MS);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Try again shortly." },
+      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } },
+    );
   }
 
   const url = new URL(request.url);

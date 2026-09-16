@@ -6,6 +6,7 @@ import {
   createCandidate,
   listCandidates,
   removeLegFromCandidate,
+  renameCandidate,
   setCandidateStake,
 } from "../candidateService";
 import { __setDBForTests } from "@/storage/indexeddb/db";
@@ -36,6 +37,23 @@ describe("addLegToCandidate / removeLegFromCandidate", () => {
 
     const removed = await removeLegFromCandidate(candidate.id, "idea-1");
     expect(removed.ideaIds).toEqual([]);
+  });
+});
+
+describe("renameCandidate", () => {
+  it("updates the name and persists it", async () => {
+    const candidate = await createCandidate("Sunday Core", "FanDuel");
+    const renamed = await renameCandidate(candidate.id, "Sunday Chaos");
+    expect(renamed.name).toBe("Sunday Chaos");
+
+    const all = await listCandidates();
+    expect(all.find((c) => c.id === candidate.id)?.name).toBe("Sunday Chaos");
+  });
+
+  it("ignores a blank rename and keeps the existing name", async () => {
+    const candidate = await createCandidate("Sunday Core", "FanDuel");
+    const renamed = await renameCandidate(candidate.id, "   ");
+    expect(renamed.name).toBe("Sunday Core");
   });
 });
 

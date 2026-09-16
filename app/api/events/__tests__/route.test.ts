@@ -49,13 +49,13 @@ describe("GET /api/events", () => {
     expect(json.events).toHaveLength(1);
   });
 
-  it("rate-limits repeated requests from the same client", async () => {
-    const makeRequest = () =>
-      new Request("http://localhost/api/events?league=CFL", { headers: { "x-forwarded-for": "203.0.113.9" } });
-    let lastStatus = 0;
-    for (let i = 0; i < 25; i++) {
-      lastStatus = (await GET(makeRequest())).status;
+  it("rate-limits repeated requests and returns Retry-After once limited", async () => {
+    const makeRequest = () => new Request("http://localhost/api/events?league=CFL");
+    let lastResponse = await GET(makeRequest());
+    for (let i = 0; i < 24; i++) {
+      lastResponse = await GET(makeRequest());
     }
-    expect(lastStatus).toBe(429);
+    expect(lastResponse.status).toBe(429);
+    expect(Number(lastResponse.headers.get("Retry-After"))).toBeGreaterThan(0);
   });
 });
