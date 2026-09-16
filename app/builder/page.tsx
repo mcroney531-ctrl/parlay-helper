@@ -13,6 +13,7 @@ import { calculateCombinedEstimate, calculatePayoutCents, hasSameGameCombination
 import { detectCorrelationSignals } from "@/domain/rules/correlation";
 import { detectConcentrationSignals } from "@/domain/rules/concentration";
 import { removeLegFromCandidate } from "@/domain/candidates/candidateService";
+import { refreshCandidateContext } from "@/domain/odds/refreshService";
 
 function kickoffWindowFor(scheduledStart: string | null): string | null {
   if (!scheduledStart) return null;
@@ -22,9 +23,11 @@ function kickoffWindowFor(scheduledStart: string | null): string | null {
 }
 
 export default function BuilderPage() {
-  const { candidates, ideas, liveContextByIdeaId, loading, refreshCandidates } = useData();
+  const { candidates, ideas, liveContextByIdeaId, loading, refreshCandidates, refreshLiveContext } = useData();
   const [activeId, setActiveId] = useState<string>("");
   const [expanded, setExpanded] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
 
   const effectiveActiveId = candidates.some((c) => c.id === activeId) ? activeId : candidates[0]?.id ?? "";
   const candidate = candidates.find((c) => c.id === effectiveActiveId) ?? null;
@@ -79,6 +82,20 @@ export default function BuilderPage() {
     await refreshCandidates();
   }
 
+  async function handleRefresh() {
+    if (!candidate || refreshing) return;
+    setRefreshing(true);
+    setRefreshError(null);
+    try {
+      await refreshCandidateContext(candidate, ideas);
+      await refreshLiveContext();
+    } catch (err) {
+      setRefreshError(err instanceof Error ? err.message : "Could not refresh odds/status.");
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   if (loading) {
     return (
       <p className="text-sm" style={{ color: "var(--muted)" }}>
@@ -108,9 +125,25 @@ export default function BuilderPage() {
 
           {expanded && (
             <div className="flex flex-col gap-4">
-              <p className="text-sm" style={{ color: "var(--muted)" }}>
-                {candidate.sportsbook} · one sportsbook per candidate
-              </p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm" style={{ color: "var(--muted)" }}>
+                  {candidate.sportsbook} · one sportsbook per candidate
+                </p>
+                <button
+                  type="button"
+                  onClick={handleRefresh}
+                  disabled={refreshing || legs.length === 0}
+                  className="min-h-[36px] rounded-md border px-3 py-1 text-xs font-semibold disabled:opacity-50"
+                  style={{ borderColor: "var(--border)" }}
+                >
+                  {refreshing ? "Refreshing…" : "Refresh odds & status"}
+                </button>
+              </div>
+              {refreshError && (
+                <p role="alert" className="text-xs" style={{ color: "var(--danger-foreground)" }}>
+                  {refreshError}
+                </p>
+              )}
 
               {legs.length === 0 ? (
                 <p className="text-sm" style={{ color: "var(--muted)" }}>

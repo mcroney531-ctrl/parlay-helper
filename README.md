@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Parlay Helper
 
-## Getting Started
+A personal, local-first parlay planning PWA: capture prop ideas quickly, see what changed by game day, assemble book-specific candidate slips deliberately, and keep an immutable record of what you actually placed.
 
-First, run the development server:
+This app never scores, recommends, or optimizes a bet. It organizes and shows context; you decide.
+
+## Getting started
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000 — it redirects to `/capture`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `npm run dev` — dev server
+- `npm run build` — production build
+- `npm run test` — run the Vitest suite once
+- `npm run test:watch` — Vitest in watch mode
+- `npm run lint` — ESLint
 
-## Learn More
+## Environment variables
 
-To learn more about Next.js, take a look at the following resources:
+Both integrations degrade gracefully with no configuration — the core capture → build → finalize loop never depends on them.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `ODDS_API_KEY` — [The Odds API](https://the-odds-api.com/) key, used only server-side in `app/api/odds/route.ts`. Without it, the odds route returns an explicit `not_configured` status per event instead of failing.
+- Sleeper's public player endpoint needs no key; `app/api/sleeper/route.ts` calls it directly and caches the full payload in-memory for ~24h.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Architecture
 
-## Deploy on Vercel
+```
+app/            Next.js App Router pages (capture, bucket, builder, history) + API routes
+components/     Presentational + lightly-stateful UI components
+domain/         Business logic: ideas, candidates, odds math, rules, history — framework-free, unit tested
+integrations/   Server-side adapters for The Odds API and Sleeper (secrets stay here)
+storage/        IndexedDB repository layer, schema versioning, migrations
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- **Storage**: IndexedDB via `idb`, schema-versioned (`storage/indexeddb/schema.ts`). Add a migration by bumping `SCHEMA_VERSION` and appending an `if (oldVersion < N)` block in `storage/indexeddb/db.ts` — never edit a past step.
+- **Odds math**: `domain/odds/` — American/decimal conversion, combined parlay estimate, payout, and same-game-parlay detection are pure functions with no I/O, covered by unit tests.
+- **Rules**: `domain/rules/` — correlation and concentration signals are deterministic and named-threshold-driven (`domain/rules/config.ts`). They only ever surface context; they never filter or reorder legs.
+- **Odds API route**: groups legs by `sport + event + market set` before calling the provider (never one request per leg), caches per-key with a short TTL, and dedupes concurrent identical requests.
+- **Sleeper route**: caches the full player payload in-memory for ~24h and only ever returns the requested player-id subset to the client.
+- **Offline**: `public/sw.js` caches the app shell (network-first, falling back to cache) so the installed app opens offline; it never intercepts `/api/*`. Capture, bucket, and builder work fully offline since they only touch IndexedDB.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Testing
+
+`npm run test` runs the full Vitest suite: odds conversion/estimate math, correlation/concentration rules, change-radar diffing, the IndexedDB-backed idea/candidate/finalize services (via `fake-indexeddb`), and the `/api/odds` and `/api/sleeper` route handlers (mocked `fetch`).
