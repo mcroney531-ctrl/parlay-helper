@@ -5,13 +5,14 @@ import type { CandidateParlay, CapturedIdea, FinalizedParlay, LiveContext } from
 import { listIdeas } from "@/domain/ideas/ideaService";
 import { listCandidates } from "@/domain/candidates/candidateService";
 import { listFinalizedParlays } from "@/domain/history/finalizeService";
-import { getAllLiveContext } from "@/storage/indexeddb/repositories/liveContextRepository";
+import { getAllLiveContext, liveContextKey } from "@/storage/indexeddb/repositories/liveContextRepository";
 
 type DataContextValue = {
   ideas: CapturedIdea[];
   candidates: CandidateParlay[];
   finalized: FinalizedParlay[];
-  liveContextByIdeaId: Record<string, LiveContext>;
+  /** Keyed by liveContextKey(ideaId, sportsbook) — never just ideaId, since the same idea can carry different prices per book. */
+  liveContextByKey: Record<string, LiveContext>;
   loading: boolean;
   storageError: string | null;
   refreshIdeas: () => Promise<void>;
@@ -26,7 +27,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [ideas, setIdeas] = useState<CapturedIdea[]>([]);
   const [candidates, setCandidates] = useState<CandidateParlay[]>([]);
   const [finalized, setFinalized] = useState<FinalizedParlay[]>([]);
-  const [liveContextByIdeaId, setLiveContextByIdeaId] = useState<Record<string, LiveContext>>({});
+  const [liveContextByKey, setLiveContextByKey] = useState<Record<string, LiveContext>>({});
   const [loading, setLoading] = useState(true);
   const [storageError, setStorageError] = useState<string | null>(null);
 
@@ -58,9 +59,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const refreshLiveContext = useCallback(async () => {
     try {
       const all = await getAllLiveContext();
-      const byId: Record<string, LiveContext> = {};
-      for (const ctx of all) byId[ctx.ideaId] = ctx;
-      setLiveContextByIdeaId(byId);
+      const byKey: Record<string, LiveContext> = {};
+      for (const ctx of all) byKey[liveContextKey(ctx.ideaId, ctx.sportsbook)] = ctx;
+      setLiveContextByKey(byKey);
     } catch (err) {
       setStorageError(err instanceof Error ? err.message : "Failed to load live context");
     }
@@ -82,7 +83,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       ideas,
       candidates,
       finalized,
-      liveContextByIdeaId,
+      liveContextByKey,
       loading,
       storageError,
       refreshIdeas,
@@ -90,7 +91,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       refreshFinalized,
       refreshLiveContext,
     }),
-    [ideas, candidates, finalized, liveContextByIdeaId, loading, storageError, refreshIdeas, refreshCandidates, refreshFinalized, refreshLiveContext],
+    [ideas, candidates, finalized, liveContextByKey, loading, storageError, refreshIdeas, refreshCandidates, refreshFinalized, refreshLiveContext],
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

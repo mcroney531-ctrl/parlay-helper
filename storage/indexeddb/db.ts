@@ -13,8 +13,11 @@ export interface ParlayHelperDB extends DBSchema {
     };
   };
   liveContext: {
-    key: string;
+    key: [string, string];
     value: LiveContext;
+    indexes: {
+      "by-ideaId": string;
+    };
   };
   candidates: {
     key: string;
@@ -51,6 +54,18 @@ function runMigrations(db: IDBPDatabase<ParlayHelperDB>, oldVersion: number): vo
     finalized.createIndex("by-finalizedAt", "finalizedAt");
 
     db.createObjectStore(STORES.meta);
+  }
+
+  // v1 -> v2: liveContext moves from keyed-by-ideaId to a compound
+  // (ideaId, sportsbook) key. A single idea used in candidates on two
+  // different books must never share one cached price/status record.
+  // LiveContext is a refreshable cache, not user-authored data, so the
+  // migration drops and recreates the store rather than trying to
+  // reshape existing rows.
+  if (oldVersion < 2) {
+    db.deleteObjectStore(STORES.liveContext);
+    const liveContext = db.createObjectStore(STORES.liveContext, { keyPath: ["ideaId", "sportsbook"] });
+    liveContext.createIndex("by-ideaId", "ideaId");
   }
 
   // Future migrations append additional `if (oldVersion < N)` blocks here,

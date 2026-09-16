@@ -44,6 +44,14 @@ export type LiveContext = {
   fetchedAt: string;
   source: string;
   warnings: string[];
+  // Odds and player-status come from independent providers on independent
+  // schedules (odds: on demand; player status: ~daily cache). Tracked
+  // separately so refreshing one never overstates the freshness of the
+  // other. `fetchedAt`/`source` above reflect whichever updated most recently.
+  oddsFetchedAt: string | null;
+  oddsSource: string | null;
+  playerStatusFetchedAt: string | null;
+  playerStatusSource: string | null;
 };
 
 export type CandidateParlay = {

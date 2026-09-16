@@ -36,6 +36,10 @@ describe("finalizeCandidate", () => {
       fetchedAt: new Date().toISOString(),
       source: "odds-api",
       warnings: [],
+      oddsFetchedAt: new Date().toISOString(),
+      oddsSource: "odds-api",
+      playerStatusFetchedAt: null,
+      playerStatusSource: null,
     });
 
     const candidate = await createCandidate("Sunday Core", "FanDuel");
@@ -77,5 +81,72 @@ describe("finalizeCandidate", () => {
 
     const stored = (await listFinalizedParlays()).find((f) => f.id === finalized.id);
     expect(stored?.legSnapshots[0].lineAtCapture).toBe(80.5);
+  });
+
+  it("refuses to finalize rather than silently dropping a leg whose idea was deleted", async () => {
+    const idea = await captureStructuredIdea("Puka O80.5", {
+      marketKey: "player_reception_yds",
+      selection: "over",
+    });
+    const candidate = await createCandidate("Sunday Core", "FanDuel");
+    await addLegToCandidate(candidate.id, idea.id);
+
+    const { deleteIdeaPermanently } = await import("@/domain/ideas/ideaService");
+    await deleteIdeaPermanently(idea.id);
+
+    await expect(finalizeCandidate(candidate.id)).rejects.toThrow(/no longer exists/);
+    expect(await listFinalizedParlays()).toHaveLength(0);
+  });
+
+  it("rejects an invalid actual American odds value instead of persisting NaN", async () => {
+    const idea = await captureStructuredIdea("Puka O80.5", {
+      marketKey: "player_reception_yds",
+      selection: "over",
+      oddsAtCaptureAmerican: -110,
+    });
+    const candidate = await createCandidate("Sunday Core", "FanDuel");
+    await addLegToCandidate(candidate.id, idea.id);
+
+    await expect(
+      finalizeCandidate(candidate.id, { actualSportsbookOddsAmerican: Number("not a number") }),
+    ).rejects.toThrow();
+    await expect(finalizeCandidate(candidate.id, { actualSportsbookOddsAmerican: 0 })).rejects.toThrow();
+    await expect(finalizeCandidate(candidate.id, { actualSportsbookOddsAmerican: 50 })).rejects.toThrow();
+  });
+
+  it("only reads live context scoped to the candidate's own sportsbook", async () => {
+    const idea = await captureStructuredIdea("Puka O80.5", {
+      marketKey: "player_reception_yds",
+      selection: "over",
+      oddsAtCaptureAmerican: -110,
+      eventId: "evt-1",
+    });
+    const fanduel = await createCandidate("FD Core", "FanDuel");
+    await addLegToCandidate(fanduel.id, idea.id);
+
+    await putLiveContext({
+      ideaId: idea.id,
+      sportsbook: "DraftKings",
+      eventId: "evt-1",
+      currentLine: 90,
+      currentOddsAmerican: -500,
+      marketAvailable: true,
+      playerStatus: null,
+      depthChartPosition: null,
+      gameStatus: null,
+      scheduledStart: null,
+      fetchedAt: new Date().toISOString(),
+      source: "odds-api",
+      warnings: [],
+      oddsFetchedAt: new Date().toISOString(),
+      oddsSource: "odds-api",
+      playerStatusFetchedAt: null,
+      playerStatusSource: null,
+    });
+
+    const finalized = await finalizeCandidate(fanduel.id);
+    // The FanDuel candidate must never pick up DraftKings' cached price.
+    expect(finalized.legSnapshots[0].lineAtFinalize).toBeNull();
+    expect(finalized.legSnapshots[0].oddsAtFinalizeAmerican).toBeNull();
   });
 });

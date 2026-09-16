@@ -3,14 +3,18 @@
 // carry no secrets client-side, but their freshness semantics are owned by
 // the app's own IndexedDB caching layer, not the browser cache.
 
-const CACHE_NAME = "parlay-helper-shell-v1";
+const CACHE_NAME = "parlay-helper-shell-v2";
 const OFFLINE_URL = "/capture";
+// Every top-level route the bottom nav can reach, precached on install so
+// a first-ever offline visit to any of them still renders that page
+// instead of silently substituting the Capture shell.
+const APP_SHELL_URLS = ["/capture", "/bucket", "/builder", "/history", "/manifest.json"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(CACHE_NAME)
-      .then((cache) => cache.addAll([OFFLINE_URL, "/manifest.json"]))
+      .then((cache) => cache.addAll(APP_SHELL_URLS))
       .then(() => self.skipWaiting()),
   );
 });

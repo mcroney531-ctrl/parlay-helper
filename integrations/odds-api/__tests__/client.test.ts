@@ -55,6 +55,34 @@ describe("fetchEventOdds", () => {
     expect(result.odds?.outcomes[0]).toMatchObject({ name: "Over", point: 63.5, priceAmerican: -110 });
   });
 
+  it("passes through the player-prop description field so callers can match player identity", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: "evt-a",
+          commence_time: null,
+          bookmakers: [
+            {
+              key: "fanduel",
+              markets: [
+                {
+                  key: "player_reception_yds",
+                  outcomes: [
+                    { name: "Over", description: "Puka Nacua", point: 63.5, price: -110 },
+                    { name: "Over", description: "Cooper Kupp", point: 71.5, price: -115 },
+                  ],
+                },
+              ],
+            },
+          ],
+        }),
+        { status: 200 },
+      ),
+    );
+    const result = await fetchEventOdds(baseParams);
+    expect(result.odds?.outcomes.map((o) => o.description)).toEqual(["Puka Nacua", "Cooper Kupp"]);
+  });
+
   it("returns not_found on a 404 without leaking the raw response", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("", { status: 404 }));
     const result = await fetchEventOdds(baseParams);

@@ -17,6 +17,8 @@ const BOOKMAKER_KEY: Record<string, string> = {
   espnbet: "espnbet",
 };
 
+export const SUPPORTED_LEAGUES = Object.keys(LEAGUE_TO_SPORT_KEY);
+
 export function sportKeyForLeague(league: string | null): string | null {
   if (!league) return null;
   return LEAGUE_TO_SPORT_KEY[league.toUpperCase()] ?? null;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useData } from "@/app/DataProvider";
 import { CandidateSwitcher } from "@/components/CandidateSwitcher";
 import { BuilderTray } from "@/components/BuilderTray";
@@ -14,6 +14,7 @@ import { detectCorrelationSignals } from "@/domain/rules/correlation";
 import { detectConcentrationSignals } from "@/domain/rules/concentration";
 import { removeLegFromCandidate } from "@/domain/candidates/candidateService";
 import { refreshCandidateContext } from "@/domain/odds/refreshService";
+import { liveContextKey } from "@/storage/indexeddb/repositories/liveContextRepository";
 
 function kickoffWindowFor(scheduledStart: string | null): string | null {
   if (!scheduledStart) return null;
@@ -23,7 +24,7 @@ function kickoffWindowFor(scheduledStart: string | null): string | null {
 }
 
 export default function BuilderPage() {
-  const { candidates, ideas, liveContextByIdeaId, loading, refreshCandidates, refreshLiveContext } = useData();
+  const { candidates, ideas, liveContextByKey, loading, refreshCandidates, refreshLiveContext } = useData();
   const [activeId, setActiveId] = useState<string>("");
   const [expanded, setExpanded] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -31,49 +32,40 @@ export default function BuilderPage() {
 
   const effectiveActiveId = candidates.some((c) => c.id === activeId) ? activeId : candidates[0]?.id ?? "";
   const candidate = candidates.find((c) => c.id === effectiveActiveId) ?? null;
+  const sportsbook = candidate?.sportsbook ?? "";
+  function liveContextFor(ideaId: string) {
+    return liveContextByKey[liveContextKey(ideaId, sportsbook)];
+  }
 
-  const legs = useMemo(() => {
-    if (!candidate) return [];
-    return candidate.ideaIds.map((id) => ideas.find((idea) => idea.id === id)).filter((v) => v !== undefined);
-  }, [candidate, ideas]);
+  const legs = candidate
+    ? candidate.ideaIds.map((id) => ideas.find((idea) => idea.id === id)).filter((v) => v !== undefined)
+    : [];
 
-  const estimate = useMemo(
-    () =>
-      calculateCombinedEstimate(
-        legs.map((leg) => ({
-          ideaId: leg.id,
-          eventId: leg.eventId,
-          currentOddsAmerican: liveContextByIdeaId[leg.id]?.currentOddsAmerican ?? null,
-          captureOddsAmerican: leg.oddsAtCaptureAmerican,
-        })),
-      ),
-    [legs, liveContextByIdeaId],
+  const estimate = calculateCombinedEstimate(
+    legs.map((leg) => ({
+      ideaId: leg.id,
+      eventId: leg.eventId,
+      currentOddsAmerican: liveContextFor(leg.id)?.currentOddsAmerican ?? null,
+      captureOddsAmerican: leg.oddsAtCaptureAmerican,
+    })),
   );
 
   const payoutCents =
     estimate.ok && candidate ? calculatePayoutCents(candidate.stakeCents, estimate.decimalOdds) : null;
 
-  const isSameGame = useMemo(
-    () => hasSameGameCombination(legs.map((leg) => ({ eventId: leg.eventId }))),
-    [legs],
+  const isSameGame = hasSameGameCombination(legs.map((leg) => ({ eventId: leg.eventId })));
+
+  const correlationSignals = detectCorrelationSignals(
+    legs.map((leg) => ({ ideaId: leg.id, eventId: leg.eventId })),
   );
 
-  const correlationSignals = useMemo(
-    () => detectCorrelationSignals(legs.map((leg) => ({ ideaId: leg.id, eventId: leg.eventId }))),
-    [legs],
-  );
-
-  const concentrationSignals = useMemo(
-    () =>
-      detectConcentrationSignals(
-        legs.map((leg) => ({
-          ideaId: leg.id,
-          eventId: leg.eventId,
-          team: leg.team,
-          kickoffWindow: kickoffWindowFor(liveContextByIdeaId[leg.id]?.scheduledStart ?? null),
-        })),
-      ),
-    [legs, liveContextByIdeaId],
+  const concentrationSignals = detectConcentrationSignals(
+    legs.map((leg) => ({
+      ideaId: leg.id,
+      eventId: leg.eventId,
+      team: leg.team,
+      kickoffWindow: kickoffWindowFor(liveContextFor(leg.id)?.scheduledStart ?? null),
+    })),
   );
 
   async function handleRemoveLeg(ideaId: string) {
@@ -155,7 +147,7 @@ export default function BuilderPage() {
                     <LegRow
                       key={leg.id}
                       idea={leg}
-                      liveContext={liveContextByIdeaId[leg.id]}
+                      liveContext={liveContextFor(leg.id)}
                       onRemove={() => handleRemoveLeg(leg.id)}
                     />
                   ))}

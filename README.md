@@ -38,12 +38,14 @@ integrations/   Server-side adapters for The Odds API and Sleeper (secrets stay 
 storage/        IndexedDB repository layer, schema versioning, migrations
 ```
 
-- **Storage**: IndexedDB via `idb`, schema-versioned (`storage/indexeddb/schema.ts`). Add a migration by bumping `SCHEMA_VERSION` and appending an `if (oldVersion < N)` block in `storage/indexeddb/db.ts` — never edit a past step.
+- **Storage**: IndexedDB via `idb`, schema-versioned (`storage/indexeddb/schema.ts`). Add a migration by bumping `SCHEMA_VERSION` and appending an `if (oldVersion < N)` block in `storage/indexeddb/db.ts` — never edit a past step. `liveContext` is keyed by `(ideaId, sportsbook)`, not just `ideaId` — the same idea in a FanDuel candidate and a DraftKings candidate must never share one cached price.
 - **Odds math**: `domain/odds/` — American/decimal conversion, combined parlay estimate, payout, and same-game-parlay detection are pure functions with no I/O, covered by unit tests.
 - **Rules**: `domain/rules/` — correlation and concentration signals are deterministic and named-threshold-driven (`domain/rules/config.ts`). They only ever surface context; they never filter or reorder legs.
-- **Odds API route**: groups legs by `sport + event + market set` before calling the provider (never one request per leg), caches per-key with a short TTL, and dedupes concurrent identical requests.
+- **Odds API route**: groups legs by `sport + event + market set` before calling the provider (never one request per leg), caches per-key with a short TTL, and dedupes concurrent identical requests. Matching a fetched outcome back to a leg (`domain/odds/refreshService.ts`) requires player-identity confirmation on player-prop markets — it refuses to guess when a market has more than one player and identity can't be confirmed, rather than silently attaching the wrong player's price.
+- **Market/league fields**: the Bucket's structured-details form picks markets from a curated list of real Odds API keys (`integrations/odds-api/marketKeys.ts`) instead of deriving a key from free text, and has explicit League and Player ID fields — both required for the odds/Sleeper refresh to have anything to match against.
 - **Sleeper route**: caches the full player payload in-memory for ~24h and only ever returns the requested player-id subset to the client.
-- **Offline**: `public/sw.js` caches the app shell (network-first, falling back to cache) so the installed app opens offline; it never intercepts `/api/*`. Capture, bucket, and builder work fully offline since they only touch IndexedDB.
+- **Refresh ordering**: odds and player-status refreshes run sequentially (never `Promise.all`) against the same LiveContext record, and track their own freshness (`oddsFetchedAt`/`playerStatusFetchedAt`) independently so refreshing one never overstates the freshness of the other.
+- **Offline**: `public/sw.js` precaches all four top-level routes (capture, bucket, builder, history) plus the manifest on install, then caches further same-origin GETs network-first; it never intercepts `/api/*`. Capture, bucket, and builder work fully offline since they only touch IndexedDB.
 
 ## Testing
 

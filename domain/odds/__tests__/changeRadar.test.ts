@@ -45,6 +45,10 @@ function makeLiveContext(overrides: Partial<LiveContext> = {}): LiveContext {
     fetchedAt: new Date().toISOString(),
     source: "odds-api",
     warnings: [],
+    oddsFetchedAt: new Date().toISOString(),
+    oddsSource: "odds-api",
+    playerStatusFetchedAt: null,
+    playerStatusSource: null,
     ...overrides,
   };
 }

@@ -10,7 +10,8 @@ export type OddsRequestLeg = {
 
 export type NormalizedOutcome = {
   marketKey: string;
-  name: string; // e.g. "Over", "Under", player name for player props
+  name: string; // e.g. "Over", "Under", "Yes", "No"
+  description: string | null; // player name, present on player-prop markets
   point: number | null;
   priceAmerican: number;
 };

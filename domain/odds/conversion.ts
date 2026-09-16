@@ -17,3 +17,8 @@ export function decimalToAmerican(decimal: number): number {
 export function roundAmerican(american: number): number {
   return american > 0 ? Math.round(american) : -Math.round(Math.abs(american));
 }
+
+/** American odds are never quoted between -99 and 99 (exclusive) or as 0/NaN. */
+export function isValidAmericanOdds(value: number): boolean {
+  return Number.isFinite(value) && Math.abs(value) >= 100;
+}

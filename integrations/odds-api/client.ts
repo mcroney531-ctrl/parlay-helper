@@ -4,7 +4,7 @@ import { buildCacheKey, dedupeInFlight, getCached, setCached } from "./cache";
 const FETCH_TIMEOUT_MS = 8_000;
 const ODDS_API_BASE = "https://api.the-odds-api.com/v4";
 
-type RawOutcome = { name: string; price: number; point?: number };
+type RawOutcome = { name: string; description?: string; price: number; point?: number };
 type RawMarket = { key: string; outcomes: RawOutcome[] };
 type RawBookmaker = { key: string; markets: RawMarket[] };
 type RawEventOdds = { id: string; commence_time: string; bookmakers: RawBookmaker[] };
@@ -17,6 +17,7 @@ function normalize(raw: RawEventOdds, bookmakerKey: string, sportsbookLabel: str
       outcomes.push({
         marketKey: market.key,
         name: outcome.name,
+        description: outcome.description ?? null,
         point: outcome.point ?? null,
         priceAmerican: outcome.price,
       });
