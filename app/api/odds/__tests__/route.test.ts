@@ -45,6 +45,18 @@ describe("POST /api/odds", () => {
     expect(json.results[0].status).toBe("not_configured");
   });
 
+  it("rejects an eventId with path-breaking characters instead of forwarding it upstream", async () => {
+    const request = new Request("http://localhost/api/odds", {
+      method: "POST",
+      body: JSON.stringify({
+        sportsbook: "FanDuel",
+        legs: [{ ideaId: "1", league: "NFL", eventId: "../../etc/passwd", marketKey: "player_reception_yds" }],
+      }),
+    });
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+  });
+
   it("caps requests spanning too many distinct events", async () => {
     const legs = Array.from({ length: 20 }, (_, i) => ({
       ideaId: `idea-${i}`,

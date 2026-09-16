@@ -3,8 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/generate-app-shell.mjs --dev",
     "dev": "next dev",
-    "build": "next build && node scripts/generate-precache-manifest.mjs",
+    "build": "next build",
+    "postbuild": "node scripts/generate-app-shell.mjs",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",

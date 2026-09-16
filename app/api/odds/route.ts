@@ -13,7 +13,15 @@ const requestSchema = z.object({
       z.object({
         ideaId: z.string().min(1).max(200),
         league: z.string().min(1).max(40),
-        eventId: z.string().min(1).max(200),
+        // Interpolated as a URL path segment in integrations/odds-api/client.ts —
+        // restrict to a safe charset so it can never smuggle a path traversal or
+        // extra path segments into the upstream request (the host/protocol are
+        // always hardcoded regardless, but this keeps the path itself honest too).
+        eventId: z
+          .string()
+          .min(1)
+          .max(200)
+          .regex(/^[A-Za-z0-9_-]+$/, "eventId must be alphanumeric (with - or _)"),
         marketKey: z.string().min(1).max(80),
       }),
     )
