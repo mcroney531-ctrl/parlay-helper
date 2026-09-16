@@ -30,4 +30,18 @@ describe("GET /api/sleeper", () => {
     const response = await GET(request);
     expect(response.status).toBe(400);
   });
+
+  it("rejects a request with neither playerIds nor search", async () => {
+    const request = new Request("http://localhost/api/sleeper");
+    const response = await GET(request);
+    expect(response.status).toBe(400);
+  });
+
+  it("resolves a name search to real player ids without the caller ever supplying one", async () => {
+    const request = new Request("http://localhost/api/sleeper?search=puka");
+    const response = await GET(request);
+    const json = await response.json();
+    expect(json.results).toHaveLength(1);
+    expect(json.results[0]).toMatchObject({ playerId: "1", fullName: "Puka Nacua" });
+  });
 });

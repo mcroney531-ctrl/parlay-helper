@@ -3,19 +3,30 @@
 // carry no secrets client-side, but their freshness semantics are owned by
 // the app's own IndexedDB caching layer, not the browser cache.
 
-const CACHE_NAME = "parlay-helper-shell-v2";
+const CACHE_NAME = "parlay-helper-shell-v3";
 const OFFLINE_URL = "/capture";
-// Every top-level route the bottom nav can reach, precached on install so
-// a first-ever offline visit to any of them still renders that page
-// instead of silently substituting the Capture shell.
-const APP_SHELL_URLS = ["/capture", "/bucket", "/builder", "/history", "/manifest.json"];
+// Minimal fallback if the generated manifest can't be fetched (e.g. this
+// exact build never ran the postbuild step). The real list — every route's
+// actual JS/CSS/font chunks, not just its HTML document — comes from
+// precache-manifest.json, written by scripts/generate-precache-manifest.mjs
+// straight out of this build's own output, so it can't drift from what a
+// route actually needs to render offline.
+const FALLBACK_APP_SHELL_URLS = ["/capture", "/bucket", "/builder", "/history", "/manifest.json"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches
-      .open(CACHE_NAME)
-      .then((cache) => cache.addAll(APP_SHELL_URLS))
-      .then(() => self.skipWaiting()),
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+      try {
+        const manifestResponse = await fetch("/precache-manifest.json");
+        if (!manifestResponse.ok) throw new Error("manifest not found");
+        const urls = await manifestResponse.json();
+        await cache.addAll(urls);
+      } catch {
+        await cache.addAll(FALLBACK_APP_SHELL_URLS);
+      }
+      await self.skipWaiting();
+    })(),
   );
 });
 

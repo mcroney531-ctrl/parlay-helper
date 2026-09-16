@@ -17,6 +17,10 @@
 /.next/
 /out/
 
+# generated at build time by scripts/generate-precache-manifest.mjs —
+# always regenerated from that build's own hashed chunk names
+/public/precache-manifest.json
+
 # production
 /build
 

@@ -5,6 +5,8 @@ import type { CapturedIdea, Confidence } from "@/domain/types";
 import { CONFIDENCE_LEVELS } from "@/domain/types";
 import { SUPPORTED_LEAGUES } from "@/integrations/odds-api/sportKeys";
 import { CUSTOM_MARKET_VALUE, MARKET_OPTIONS, marketLabelForKey } from "@/integrations/odds-api/marketKeys";
+import { PlayerSearchField } from "@/components/PlayerSearchField";
+import { EventPickerField } from "@/components/EventPickerField";
 
 export type StructuredFormValues = {
   sport: string;
@@ -121,15 +123,13 @@ export function StructuredDetailsForm({
   return (
     <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-3 pt-3 sm:grid-cols-3">
       <Field label="Player">
-        <input className={inputClass} style={inputStyle} value={values.playerName} onChange={(e) => set("playerName", e.target.value)} />
-      </Field>
-      <Field label="Player ID (Sleeper)">
-        <input
-          className={inputClass}
-          style={inputStyle}
-          value={values.playerId}
-          onChange={(e) => set("playerId", e.target.value)}
-          placeholder="e.g. 9509"
+        <PlayerSearchField
+          playerName={values.playerName}
+          playerId={values.playerId}
+          onChange={(name, id) => {
+            set("playerName", name);
+            set("playerId", id);
+          }}
         />
       </Field>
       <Field label="Team">
@@ -154,8 +154,16 @@ export function StructuredDetailsForm({
       <Field label="Slate / date">
         <input type="date" className={inputClass} style={inputStyle} value={values.slateDate} onChange={(e) => set("slateDate", e.target.value)} />
       </Field>
-      <Field label="Event ID">
-        <input className={inputClass} style={inputStyle} value={values.eventId} onChange={(e) => set("eventId", e.target.value)} placeholder="Odds API event id" />
+      <Field label="Game">
+        <EventPickerField
+          eventId={values.eventId}
+          league={values.league}
+          onChange={(id, meta) => {
+            set("eventId", id);
+            if (meta && !values.team.trim()) set("team", meta.awayTeam);
+            if (meta && !values.opponent.trim()) set("opponent", meta.homeTeam);
+          }}
+        />
       </Field>
       <Field label="Market">
         <select
