@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
 import { groupLegsByEvent, POST } from "../route";
+import { __clearRateLimitForTests } from "@/integrations/rateLimit";
 
 describe("groupLegsByEvent", () => {
   it("groups multiple legs in the same event into one request group", () => {
@@ -18,6 +19,7 @@ describe("groupLegsByEvent", () => {
 describe("POST /api/odds", () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
+    __clearRateLimitForTests();
   });
 
   it("rejects invalid request bodies", async () => {
@@ -70,5 +72,20 @@ describe("POST /api/odds", () => {
     });
     const response = await POST(request);
     expect(response.status).toBe(413);
+  });
+
+  it("rate-limits repeated requests from the same client", async () => {
+    const makeRequest = () =>
+      new Request("http://localhost/api/odds", {
+        method: "POST",
+        headers: { "x-forwarded-for": "203.0.113.9" },
+        body: JSON.stringify({ sportsbook: "FanDuel", legs: [{ ideaId: "1", league: "NFL", eventId: "evt-a", marketKey: "player_reception_yds" }] }),
+      });
+
+    let lastStatus = 0;
+    for (let i = 0; i < 25; i++) {
+      lastStatus = (await POST(makeRequest())).status;
+    }
+    expect(lastStatus).toBe(429);
   });
 });

@@ -15,8 +15,8 @@ Open http://localhost:3000 — it redirects to `/capture`.
 
 ## Scripts
 
-- `npm run dev` — dev server
-- `npm run build` — production build
+- `npm run dev` — dev server (a `predev` hook first writes a minimal `public/sw.js`/`precache-manifest.json` for dev-mode offline support)
+- `npm run build` — production build (a `postbuild` hook then writes the real `public/sw.js`/`precache-manifest.json` from this build's actual rendered output — see **Offline** below)
 - `npm run test` — run the Vitest suite once
 - `npm run test:watch` — Vitest in watch mode
 - `npm run lint` — ESLint
@@ -51,7 +51,8 @@ storage/        IndexedDB repository layer, schema versioning, migrations
   - a new deploy's differently-hashed `sw.js` triggers the standard install/activate cycle, and the new cache sits under a distinct name from the old one;
   - `activate`'s cleanup then deletes every cache that isn't the current one — confirmed the old build's cache is gone after the new one takes over;
   - a missing or malformed `precache-manifest.json` makes the install reject (worker ends in `redundant`, page never gets a controller, no cache — even an empty one — gets created) instead of silently precaching a smaller, possibly-stale fallback list. `predev`/`postbuild` always write a valid manifest first, so this path should only ever trip on a genuine deploy/serving problem, and it's meant to be loud when it does.
-- **API input handling**: none of `/api/odds`, `/api/sleeper`, or `/api/events` proxy an arbitrary upstream URL — the provider host is always a hardcoded constant, and league/sportsbook/market values are only ever used after passing through a fixed allowlist lookup (`sportKeyForLeague`, `bookmakerKeyForSportsbook`) that fails closed on anything unrecognized. The one field that reaches the upstream path directly, `eventId`, is restricted to a safe charset (zod regex) so it can't smuggle extra path segments. All three routes are read-only and validate/cap every input (array/string length limits, capped distinct-event count) via zod. Rate limiting on top of this is tracked as deployment-hardening debt, not a correctness gap.
+- **API input handling**: none of `/api/odds`, `/api/sleeper`, or `/api/events` proxy an arbitrary upstream URL — the provider host is always a hardcoded constant, and league/sportsbook/market values are only ever used after passing through a fixed allowlist lookup (`sportKeyForLeague`, `bookmakerKeyForSportsbook`) that fails closed on anything unrecognized. The one field that reaches the upstream path directly, `eventId`, is restricted to a safe charset (zod regex) so it can't smuggle extra path segments. All three routes are read-only and validate/cap every input (array/string length limits, capped distinct-event count) via zod.
+- **Rate limiting**: `integrations/rateLimit.ts` caps `/api/odds` and `/api/events` (the two routes that spend `ODDS_API_KEY` quota) at 20 requests/minute per client IP, returning `429` past that. This is explicitly a *second* layer, not the primary control: it's an in-process `Map`, so on a multi-instance/serverless deployment (Vercel functions, etc.) each instance holds its own counters and a distributed attacker can multiply the effective limit by the instance count. **If deploying this publicly with a real, quota-bearing `ODDS_API_KEY`, put platform/edge-level rate limiting in front of it** (e.g. a Vercel Firewall rate-limit rule, or your reverse proxy/CDN) — that's the control that actually holds under horizontal scaling. For a single-instance deployment or private/local testing, this in-repo layer is sufficient on its own.
 
 ## Testing
 

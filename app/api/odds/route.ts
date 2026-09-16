@@ -2,9 +2,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { fetchEventOdds } from "@/integrations/odds-api/client";
 import { bookmakerKeyForSportsbook, sportKeyForLeague } from "@/integrations/odds-api/sportKeys";
+import { checkRateLimit, clientKeyFromRequest } from "@/integrations/rateLimit";
 
 const MAX_LEGS_PER_REQUEST = 50;
 const MAX_EVENTS_PER_REQUEST = 15;
+const RATE_LIMIT_MAX_REQUESTS = 20;
+const RATE_LIMIT_WINDOW_MS = 60_000;
 
 const requestSchema = z.object({
   sportsbook: z.string().min(1).max(80),
@@ -50,6 +53,11 @@ export function groupLegsByEvent(legs: { ideaId: string; league: string; eventId
 }
 
 export async function POST(request: Request) {
+  const clientKey = clientKeyFromRequest(request);
+  if (!checkRateLimit(clientKey, RATE_LIMIT_MAX_REQUESTS, RATE_LIMIT_WINDOW_MS)) {
+    return NextResponse.json({ error: "Too many requests. Try again shortly." }, { status: 429 });
+  }
+
   let body: unknown;
   try {
     body = await request.json();

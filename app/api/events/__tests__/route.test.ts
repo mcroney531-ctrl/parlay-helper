@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GET } from "../route";
 import { __clearEventsCacheForTests } from "@/integrations/odds-api/events";
+import { __clearRateLimitForTests } from "@/integrations/rateLimit";
 
 beforeEach(() => {
   __clearEventsCacheForTests();
+  __clearRateLimitForTests();
 });
 
 afterEach(() => {
@@ -45,5 +47,15 @@ describe("GET /api/events", () => {
     const json = await response.json();
     expect(json.status).toBe("ok");
     expect(json.events).toHaveLength(1);
+  });
+
+  it("rate-limits repeated requests from the same client", async () => {
+    const makeRequest = () =>
+      new Request("http://localhost/api/events?league=CFL", { headers: { "x-forwarded-for": "203.0.113.9" } });
+    let lastStatus = 0;
+    for (let i = 0; i < 25; i++) {
+      lastStatus = (await GET(makeRequest())).status;
+    }
+    expect(lastStatus).toBe(429);
   });
 });
