@@ -7,6 +7,7 @@ import { SUPPORTED_LEAGUES } from "@/integrations/odds-api/sportKeys";
 import { CUSTOM_MARKET_VALUE, MARKET_OPTIONS, marketLabelForKey } from "@/integrations/odds-api/marketKeys";
 import { PlayerSearchField } from "@/components/PlayerSearchField";
 import { EventPickerField } from "@/components/EventPickerField";
+import { Button, Select, TextInput } from "@/components/FormControls";
 
 export type StructuredFormValues = {
   sport: string;
@@ -69,12 +70,9 @@ export function valuesToPatch(values: StructuredFormValues): Partial<CapturedIde
   };
 }
 
-const inputClass = "w-full rounded-md border px-2 py-1.5 text-sm";
-const inputStyle = { borderColor: "var(--border)", background: "var(--surface)" };
-
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="flex flex-col gap-1 text-xs font-medium" style={{ color: "var(--muted)" }}>
+    <label className="flex flex-col gap-1 text-xs font-semibold" style={{ color: "var(--color-muted)" }}>
       {label}
       {children}
     </label>
@@ -121,7 +119,7 @@ export function StructuredDetailsForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-3 pt-3 sm:grid-cols-3">
+    <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-3 border-t pt-3 mt-3 sm:grid-cols-3" style={{ borderColor: "var(--color-border)" }}>
       <Field label="Player">
         <PlayerSearchField
           playerName={values.playerName}
@@ -133,26 +131,26 @@ export function StructuredDetailsForm({
         />
       </Field>
       <Field label="Team">
-        <input className={inputClass} style={inputStyle} value={values.team} onChange={(e) => set("team", e.target.value)} />
+        <TextInput value={values.team} onChange={(e) => set("team", e.target.value)} />
       </Field>
       <Field label="Opponent">
-        <input className={inputClass} style={inputStyle} value={values.opponent} onChange={(e) => set("opponent", e.target.value)} />
+        <TextInput value={values.opponent} onChange={(e) => set("opponent", e.target.value)} />
       </Field>
       <Field label="League">
-        <select className={inputClass} style={inputStyle} value={values.league} onChange={(e) => set("league", e.target.value)}>
+        <Select value={values.league} onChange={(e) => set("league", e.target.value)}>
           <option value="">—</option>
           {SUPPORTED_LEAGUES.map((league) => (
             <option key={league} value={league}>
               {league}
             </option>
           ))}
-        </select>
+        </Select>
       </Field>
       <Field label="Sport">
-        <input className={inputClass} style={inputStyle} value={values.sport} onChange={(e) => set("sport", e.target.value)} />
+        <TextInput value={values.sport} onChange={(e) => set("sport", e.target.value)} />
       </Field>
       <Field label="Slate / date">
-        <input type="date" className={inputClass} style={inputStyle} value={values.slateDate} onChange={(e) => set("slateDate", e.target.value)} />
+        <TextInput type="date" value={values.slateDate} onChange={(e) => set("slateDate", e.target.value)} />
       </Field>
       <Field label="Game">
         <EventPickerField
@@ -166,12 +164,7 @@ export function StructuredDetailsForm({
         />
       </Field>
       <Field label="Market">
-        <select
-          className={inputClass}
-          style={inputStyle}
-          value={customMarket ? CUSTOM_MARKET_VALUE : values.marketKey}
-          onChange={(e) => handleMarketSelect(e.target.value)}
-        >
+        <Select value={customMarket ? CUSTOM_MARKET_VALUE : values.marketKey} onChange={(e) => handleMarketSelect(e.target.value)}>
           <option value="">—</option>
           {MARKET_OPTIONS.map((option) => (
             <option key={option.key} value={option.key}>
@@ -179,72 +172,60 @@ export function StructuredDetailsForm({
             </option>
           ))}
           <option value={CUSTOM_MARKET_VALUE}>Other (custom key)…</option>
-        </select>
+        </Select>
       </Field>
       {customMarket && (
         <>
           <Field label="Custom market key">
-            <input
-              className={inputClass}
-              style={inputStyle}
+            <TextInput
               value={values.marketKey}
               onChange={(e) => set("marketKey", e.target.value.trim())}
               placeholder="provider market key"
             />
           </Field>
           <Field label="Custom market label">
-            <input className={inputClass} style={inputStyle} value={values.marketLabel} onChange={(e) => set("marketLabel", e.target.value)} />
+            <TextInput value={values.marketLabel} onChange={(e) => set("marketLabel", e.target.value)} />
           </Field>
         </>
       )}
       <Field label="Selection">
-        <select className={inputClass} style={inputStyle} value={values.selection} onChange={(e) => set("selection", e.target.value)}>
+        <Select value={values.selection} onChange={(e) => set("selection", e.target.value)}>
           <option value="">—</option>
           <option value="over">Over</option>
           <option value="under">Under</option>
           <option value="yes">Yes</option>
           <option value="no">No</option>
-        </select>
+        </Select>
       </Field>
       <Field label="Line at capture">
-        <input type="number" step="0.5" className={inputClass} style={inputStyle} value={values.lineAtCapture} onChange={(e) => set("lineAtCapture", e.target.value)} />
+        <TextInput type="number" step="0.5" value={values.lineAtCapture} onChange={(e) => set("lineAtCapture", e.target.value)} />
       </Field>
       <Field label="Odds at capture (American)">
-        <input type="number" className={inputClass} style={inputStyle} value={values.oddsAtCaptureAmerican} onChange={(e) => set("oddsAtCaptureAmerican", e.target.value)} placeholder="-110" />
+        <TextInput type="number" value={values.oddsAtCaptureAmerican} onChange={(e) => set("oddsAtCaptureAmerican", e.target.value)} placeholder="-110" />
       </Field>
       <Field label="Sportsbook at capture">
-        <input className={inputClass} style={inputStyle} value={values.sportsbookAtCapture} onChange={(e) => set("sportsbookAtCapture", e.target.value)} />
+        <TextInput value={values.sportsbookAtCapture} onChange={(e) => set("sportsbookAtCapture", e.target.value)} />
       </Field>
       <Field label="Confidence">
-        <select className={inputClass} style={inputStyle} value={values.confidence} onChange={(e) => set("confidence", e.target.value as Confidence)}>
+        <Select value={values.confidence} onChange={(e) => set("confidence", e.target.value as Confidence)}>
           {CONFIDENCE_LEVELS.map((level) => (
             <option key={level} value={level}>
-              {level}
+              {level.charAt(0).toUpperCase() + level.slice(1)}
             </option>
           ))}
-        </select>
+        </Select>
       </Field>
       <Field label="Note">
-        <input className={inputClass} style={inputStyle} value={values.note} onChange={(e) => set("note", e.target.value)} />
+        <TextInput value={values.note} onChange={(e) => set("note", e.target.value)} />
       </Field>
 
       <div className="col-span-full flex gap-2 pt-1">
-        <button
-          type="submit"
-          disabled={saving}
-          className="min-h-[40px] rounded-md px-3 py-1.5 text-sm font-semibold disabled:opacity-50"
-          style={{ background: "var(--accent)", color: "var(--accent-foreground)" }}
-        >
+        <Button type="submit" disabled={saving} className="!min-h-[40px] px-3 py-1.5">
           {saving ? "Saving…" : "Save details"}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="min-h-[40px] rounded-md border px-3 py-1.5 text-sm font-medium"
-          style={{ borderColor: "var(--border)" }}
-        >
+        </Button>
+        <Button type="button" variant="secondary" onClick={onCancel} className="!min-h-[40px] px-3 py-1.5">
           Cancel
-        </button>
+        </Button>
       </div>
     </form>
   );

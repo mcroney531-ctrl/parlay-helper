@@ -78,6 +78,16 @@ describe("buildChangeRadar", () => {
     expect(entries[0].kind).toBe("ok");
   });
 
+  it("formats line-less selections (e.g. anytime TD) without a stray placeholder", () => {
+    const entries = buildChangeRadar(
+      makeIdea({ selection: "yes", lineAtCapture: null, oddsAtCaptureAmerican: 140 }),
+      makeLiveContext({ currentLine: null, currentOddsAmerican: 125 }),
+    );
+    const changed = entries.find((e) => e.kind === "odds_change");
+    expect(changed?.text).toBe("Captured: Yes (+140) · Now: Yes (+125)");
+    expect(changed?.text).not.toContain("?");
+  });
+
   it("never recommends a bet in its text", () => {
     const entries = buildChangeRadar(makeIdea(), makeLiveContext({ currentOddsAmerican: -200 }));
     for (const entry of entries) {

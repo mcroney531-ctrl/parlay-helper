@@ -4,6 +4,17 @@ import { useState } from "react";
 import type { CandidateParlay } from "@/domain/types";
 import { setCandidatePromo, setCandidateStake } from "@/domain/candidates/candidateService";
 import { useData } from "@/app/DataProvider";
+import { Card } from "@/components/Card";
+import { TextInput } from "@/components/FormControls";
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="flex flex-1 flex-col gap-1 text-xs font-semibold" style={{ color: "var(--color-muted)" }}>
+      {label}
+      {children}
+    </label>
+  );
+}
 
 export function PromoAndStakePanel({ candidate }: { candidate: CandidateParlay }) {
   const { refreshCandidates } = useData();
@@ -27,36 +38,30 @@ export function PromoAndStakePanel({ candidate }: { candidate: CandidateParlay }
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border p-3" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-      <label className="flex flex-col gap-1 text-xs font-medium" style={{ color: "var(--muted)" }}>
-        Stake
-        <input
-          type="number"
-          step="0.01"
-          min="0"
-          inputMode="decimal"
-          value={stakeInput}
-          onChange={(e) => setStakeInput(e.target.value)}
-          onBlur={commitStake}
-          className="w-28 rounded-md border px-2 py-1.5 text-sm"
-          style={{ borderColor: "var(--border)", background: "var(--surface)" }}
-        />
-      </label>
+    <Card>
       <div className="flex flex-wrap gap-3">
-        <label className="flex flex-1 flex-col gap-1 text-xs font-medium" style={{ color: "var(--muted)" }}>
-          Promo note
-          <input
+        <Field label="Stake">
+          <TextInput
+            type="number"
+            step="0.01"
+            min="0"
+            inputMode="decimal"
+            value={stakeInput}
+            onChange={(e) => setStakeInput(e.target.value)}
+            onBlur={commitStake}
+            className="w-28"
+          />
+        </Field>
+        <Field label="Promo note">
+          <TextInput
             value={promoLabel}
             onChange={(e) => setPromoLabel(e.target.value)}
             onBlur={commitPromo}
             placeholder="Same Game Parlay Boost"
-            className="rounded-md border px-2 py-1.5 text-sm"
-            style={{ borderColor: "var(--border)", background: "var(--surface)" }}
           />
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-medium" style={{ color: "var(--muted)" }}>
-          Promo max stake
-          <input
+        </Field>
+        <Field label="Max stake">
+          <TextInput
             type="number"
             step="0.01"
             min="0"
@@ -64,11 +69,10 @@ export function PromoAndStakePanel({ candidate }: { candidate: CandidateParlay }
             value={promoMax}
             onChange={(e) => setPromoMax(e.target.value)}
             onBlur={commitPromo}
-            className="w-28 rounded-md border px-2 py-1.5 text-sm"
-            style={{ borderColor: "var(--border)", background: "var(--surface)" }}
+            className="w-28"
           />
-        </label>
+        </Field>
       </div>
-    </div>
+    </Card>
   );
 }

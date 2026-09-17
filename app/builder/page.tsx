@@ -4,11 +4,14 @@ import { useState } from "react";
 import { useData } from "@/app/DataProvider";
 import { CandidateSwitcher } from "@/components/CandidateSwitcher";
 import { BuilderTray } from "@/components/BuilderTray";
-import { LegRow } from "@/components/LegRow";
+import { PropLegCard } from "@/components/PropLegCard";
 import { EstimatePanel } from "@/components/EstimatePanel";
 import { RuleBanners } from "@/components/RuleBanners";
 import { PromoAndStakePanel } from "@/components/PromoAndStakePanel";
 import { FinalizeSection } from "@/components/FinalizeSection";
+import { PageShell } from "@/components/PageShell";
+import { BuildIcon } from "@/components/icons";
+import { Button } from "@/components/FormControls";
 import { calculateCombinedEstimate, calculatePayoutCents, hasSameGameCombination } from "@/domain/odds/estimate";
 import { detectCorrelationSignals } from "@/domain/rules/correlation";
 import { detectConcentrationSignals } from "@/domain/rules/concentration";
@@ -88,88 +91,106 @@ export default function BuilderPage() {
     }
   }
 
-  if (loading) {
-    return (
-      <p className="text-sm" style={{ color: "var(--muted)" }}>
-        Loading…
-      </p>
-    );
-  }
-
   return (
-    <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold">Build</h1>
-      <CandidateSwitcher activeId={effectiveActiveId} onSelect={setActiveId} />
-
-      {!candidate ? (
-        <p className="text-sm" style={{ color: "var(--muted)" }}>
-          Create a candidate to start building a slip.
+    <PageShell title="BUILD" icon={<BuildIcon className="h-8 w-8" />}>
+      {loading ? (
+        <p className="text-sm" style={{ color: "var(--color-muted)" }}>
+          Loading…
         </p>
       ) : (
-        <>
-          <BuilderTray
-            legCount={legs.length}
-            estimatedOddsAmerican={estimate.ok ? estimate.americanOdds : null}
-            estimatedPayoutCents={payoutCents}
-            expanded={expanded}
-            onToggle={() => setExpanded((v) => !v)}
-          />
-
-          {expanded && (
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm" style={{ color: "var(--muted)" }}>
-                  {candidate.sportsbook} · one sportsbook per candidate
-                </p>
-                <button
-                  type="button"
+        <div
+          className="flex flex-col gap-4"
+          style={legs.length > 0 ? { paddingBottom: "calc(var(--bottom-nav-height) + 56px)" } : undefined}
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <CandidateSwitcher activeId={effectiveActiveId} onSelect={setActiveId} />
+            {candidate && (
+              <div className="flex flex-col items-end gap-1.5 text-sm">
+                <span style={{ color: "var(--color-muted)" }}>
+                  Sportsbook: <strong style={{ color: "var(--color-ink)" }}>{candidate.sportsbook}</strong>
+                </span>
+                <Button
+                  variant="secondary"
                   onClick={handleRefresh}
                   disabled={refreshing || legs.length === 0}
-                  className="min-h-[36px] rounded-md border px-3 py-1 text-xs font-semibold disabled:opacity-50"
-                  style={{ borderColor: "var(--border)" }}
+                  className="!min-h-[36px] px-3 py-1 text-xs"
                 >
                   {refreshing ? "Refreshing…" : "Refresh odds & status"}
-                </button>
+                </Button>
               </div>
+            )}
+          </div>
+
+          {!candidate ? (
+            <p className="text-sm" style={{ color: "var(--color-muted)" }}>
+              Create a candidate to start building a slip.
+            </p>
+          ) : (
+            <>
               {refreshError && (
-                <p role="alert" className="text-xs" style={{ color: "var(--danger-foreground)" }}>
+                <p role="alert" className="text-xs font-medium" style={{ color: "var(--color-danger)" }}>
                   {refreshError}
                 </p>
               )}
 
-              {legs.length === 0 ? (
-                <p className="text-sm" style={{ color: "var(--muted)" }}>
-                  No legs yet. Add ideas to this candidate from the Bucket.
-                </p>
-              ) : (
-                <ul className="flex flex-col gap-2">
-                  {legs.map((leg) => (
-                    <LegRow
-                      key={leg.id}
-                      idea={leg}
-                      liveContext={liveContextFor(leg.id)}
-                      onRemove={() => handleRemoveLeg(leg.id)}
-                    />
-                  ))}
-                </ul>
+              <button
+                type="button"
+                onClick={() => setExpanded((v) => !v)}
+                aria-expanded={expanded}
+                className="flex items-center gap-1 text-sm font-semibold"
+                style={{ color: "var(--color-ink)" }}
+              >
+                {legs.length} leg{legs.length === 1 ? "" : "s"}
+                <span aria-hidden="true">{expanded ? "▾" : "▸"}</span>
+              </button>
+
+              {legs.length > 0 && (
+                <BuilderTray
+                  legCount={legs.length}
+                  estimatedOddsAmerican={estimate.ok ? estimate.americanOdds : null}
+                  estimatedPayoutCents={payoutCents}
+                  expanded={expanded}
+                  onToggle={() => setExpanded((v) => !v)}
+                />
               )}
 
-              <RuleBanners correlationSignals={correlationSignals} concentrationSignals={concentrationSignals} />
+              {expanded && (
+                <div className="flex flex-col gap-4">
+                  {legs.length === 0 ? (
+                    <p className="text-sm" style={{ color: "var(--color-muted)" }}>
+                      No legs yet. Add ideas to this candidate from the Bucket.
+                    </p>
+                  ) : (
+                    <ul className="flex flex-col gap-2.5">
+                      {legs.map((leg) => (
+                        <PropLegCard
+                          key={leg.id}
+                          idea={leg}
+                          liveContext={liveContextFor(leg.id)}
+                          onRemove={() => handleRemoveLeg(leg.id)}
+                        />
+                      ))}
+                    </ul>
+                  )}
 
-              <EstimatePanel
-                estimate={estimate}
-                stakeCents={candidate.stakeCents}
-                payoutCents={payoutCents}
-                isSameGame={isSameGame}
-              />
+                  <RuleBanners correlationSignals={correlationSignals} concentrationSignals={concentrationSignals} legs={legs} />
 
-              <PromoAndStakePanel candidate={candidate} />
+                  <EstimatePanel
+                    estimate={estimate}
+                    stakeCents={candidate.stakeCents}
+                    payoutCents={payoutCents}
+                    isSameGame={isSameGame}
+                  />
 
-              <FinalizeSection candidateId={candidate.id} legCount={legs.length} />
-            </div>
+                  <PromoAndStakePanel candidate={candidate} />
+
+                  <FinalizeSection candidateId={candidate.id} legCount={legs.length} />
+                </div>
+              )}
+            </>
           )}
-        </>
+        </div>
       )}
-    </div>
+    </PageShell>
   );
 }

@@ -1,11 +1,9 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { TextInput } from "@/components/FormControls";
 
 type PlayerResult = { playerId: string; fullName: string; team: string | null; position: string | null };
-
-const inputClass = "w-full rounded-md border px-2 py-1.5 text-sm";
-const inputStyle = { borderColor: "var(--border)", background: "var(--surface)" };
 
 export function PlayerSearchField({
   playerName,
@@ -100,9 +98,7 @@ export function PlayerSearchField({
         }
       }}
     >
-      <input
-        className={inputClass}
-        style={inputStyle}
+      <TextInput
         value={query}
         onChange={(e) => handleTextChange(e.target.value)}
         onKeyDown={handleKeyDown}
@@ -115,15 +111,21 @@ export function PlayerSearchField({
         aria-activedescendant={activeIndex >= 0 ? `${listboxId}-option-${activeIndex}` : undefined}
         aria-describedby={statusText ? `${listboxId}-status` : undefined}
       />
-      <p id={`${listboxId}-status`} role="status" aria-live="polite" className="mt-0.5 text-xs" style={{ color: playerId ? "var(--like)" : "var(--muted)" }}>
+      <p
+        id={`${listboxId}-status`}
+        role="status"
+        aria-live="polite"
+        className="mt-0.5 text-xs"
+        style={{ color: playerId ? "var(--color-action)" : "var(--color-muted)" }}
+      >
         {statusText}
       </p>
       {open && results.length > 0 && (
         <ul
           id={listboxId}
           role="listbox"
-          className="absolute z-10 mt-1 w-full rounded-md border shadow-sm"
-          style={{ borderColor: "var(--border)", background: "var(--surface)" }}
+          className="absolute z-10 mt-1 w-full rounded-[var(--radius-control)] border shadow-sm"
+          style={{ borderColor: "var(--color-border)", background: "var(--color-surface)" }}
         >
           {results.map((result, index) => (
             <li key={result.playerId}>
@@ -135,7 +137,7 @@ export function PlayerSearchField({
                 onClick={() => handleSelect(result)}
                 onMouseEnter={() => setActiveIndex(index)}
                 className="block w-full px-2 py-1.5 text-left text-sm"
-                style={{ background: index === activeIndex ? "var(--border)" : undefined }}
+                style={{ background: index === activeIndex ? "var(--color-selected-bg)" : undefined }}
               >
                 {result.fullName}
                 {result.team ? ` · ${result.team}` : ""}

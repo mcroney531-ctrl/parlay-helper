@@ -1,11 +1,9 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { TextInput } from "@/components/FormControls";
 
 type EventOption = { eventId: string; commenceTime: string; homeTeam: string; awayTeam: string };
-
-const inputClass = "w-full rounded-md border px-2 py-1.5 text-sm";
-const inputStyle = { borderColor: "var(--border)", background: "var(--surface)" };
 
 function formatMatchup(event: EventOption): string {
   const date = new Date(event.commenceTime);
@@ -94,15 +92,13 @@ export function EventPickerField({
         <label className="sr-only" htmlFor={`${listboxId}-manual`}>
           Event id
         </label>
-        <input
+        <TextInput
           id={`${listboxId}-manual`}
-          className={inputClass}
-          style={inputStyle}
           value={eventId}
           onChange={(e) => onChange(e.target.value.trim())}
           placeholder="Odds API event id"
         />
-        <button type="button" onClick={() => setManualMode(false)} className="mt-0.5 text-xs underline" style={{ color: "var(--accent)" }}>
+        <button type="button" onClick={() => setManualMode(false)} className="mt-0.5 text-xs font-semibold underline" style={{ color: "var(--color-action)" }}>
           Search games instead
         </button>
       </div>
@@ -111,7 +107,7 @@ export function EventPickerField({
 
   if (!league) {
     return (
-      <p role="status" className="text-xs" style={{ color: "var(--muted)" }}>
+      <p role="status" className="text-xs" style={{ color: "var(--color-muted)" }}>
         Select a league to look up games.
       </p>
     );
@@ -119,7 +115,7 @@ export function EventPickerField({
 
   if (status === "loading") {
     return (
-      <p role="status" aria-live="polite" className="text-xs" style={{ color: "var(--muted)" }}>
+      <p role="status" aria-live="polite" className="text-xs" style={{ color: "var(--color-muted)" }}>
         Loading games…
       </p>
     );
@@ -128,9 +124,9 @@ export function EventPickerField({
   if (status === "unavailable") {
     return (
       <div>
-        <p role="status" aria-live="polite" className="text-xs" style={{ color: "var(--muted)" }}>
+        <p role="status" aria-live="polite" className="text-xs" style={{ color: "var(--color-muted)" }}>
           Game lookup unavailable right now — you can leave this blank or{" "}
-          <button type="button" onClick={() => setManualMode(true)} className="underline" style={{ color: "var(--accent)" }}>
+          <button type="button" onClick={() => setManualMode(true)} className="font-semibold underline" style={{ color: "var(--color-action)" }}>
             enter an event id manually
           </button>
           .
@@ -149,9 +145,7 @@ export function EventPickerField({
         }
       }}
     >
-      <input
-        className={inputClass}
-        style={inputStyle}
+      <TextInput
         value={selected ? formatMatchup(selected) : filter}
         onChange={(e) => {
           setFilter(e.target.value);
@@ -170,11 +164,11 @@ export function EventPickerField({
         <ul
           id={listboxId}
           role="listbox"
-          className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-md border shadow-sm"
-          style={{ borderColor: "var(--border)", background: "var(--surface)" }}
+          className="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-[var(--radius-control)] border shadow-sm"
+          style={{ borderColor: "var(--color-border)", background: "var(--color-surface)" }}
         >
           {filtered.length === 0 ? (
-            <li role="status" className="px-2 py-1.5 text-sm" style={{ color: "var(--muted)" }}>
+            <li role="status" className="px-2 py-1.5 text-sm" style={{ color: "var(--color-muted)" }}>
               No matching games.
             </li>
           ) : (
@@ -188,7 +182,7 @@ export function EventPickerField({
                   onClick={() => selectEvent(event)}
                   onMouseEnter={() => setActiveIndex(index)}
                   className="block w-full px-2 py-1.5 text-left text-sm"
-                  style={{ background: index === activeIndex ? "var(--border)" : undefined }}
+                  style={{ background: index === activeIndex ? "var(--color-selected-bg)" : undefined }}
                 >
                   {formatMatchup(event)}
                 </button>
@@ -198,16 +192,11 @@ export function EventPickerField({
         </ul>
       )}
       {selected && (
-        <button
-          type="button"
-          onClick={() => onChange("")}
-          className="mt-0.5 text-xs underline"
-          style={{ color: "var(--muted)" }}
-        >
+        <button type="button" onClick={() => onChange("")} className="mt-0.5 text-xs font-semibold underline" style={{ color: "var(--color-muted)" }}>
           Clear game
         </button>
       )}
-      <button type="button" onClick={() => setManualMode(true)} className="mt-0.5 ml-3 text-xs underline" style={{ color: "var(--accent)" }}>
+      <button type="button" onClick={() => setManualMode(true)} className="mt-0.5 ml-3 text-xs font-semibold underline" style={{ color: "var(--color-action)" }}>
         Enter event id manually
       </button>
     </div>

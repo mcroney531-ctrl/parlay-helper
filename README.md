@@ -30,6 +30,12 @@ Both integrations degrade gracefully with no configuration — the core capture 
 - `RATE_LIMIT_TRUST_PROXY` — unset/`false` by default. Only set to `true` if this process sits behind a trusted reverse proxy/edge that itself appends the real client IP as the *last* hop of `X-Forwarded-For` — see **Rate limiting** below before touching this.
 - `ODDS_RATE_LIMIT_MAX` / `ODDS_RATE_LIMIT_WINDOW_MS` — override the default 20 requests / 60000 ms window for `/api/odds` and `/api/events`.
 
+## Design system
+
+Visual identity ("Film Room"): a calm deep-green shell with teal interaction accents, defined as CSS custom properties in `app/globals.css` (`--color-*`, `--confidence-*`, `--radius-*`). Shared primitives live in `components/`: `PageShell`/`AppHeader` (per-screen header + rounded content sheet), `OfflineChip` (persistent local-first status), `NavBar` (bottom tab bar), `PlayerAvatar` (44px identity slot, initials/silhouette fallback — no remote images are wired in; see below), `StatusChip` (`Pill`/`StatusRow` for confidence/status/correlation/concentration/missing/danger states), `Card`, `FormControls` (`Button`/`TextInput`/`TextArea`/`Select`), and `icons.tsx` (one inline SVG icon per concept — never sportsbook/team logos). Builder-only team-identity gradients (`teamColors.ts` + the `.team-rail`/`.team-avatar-ring` CSS classes) appear only on a leg card's left rail and avatar ring, never as a full-card background.
+
+Sleeper's public player endpoint (`integrations/sleeper/client.ts`) does not return a documented headshot/avatar URL — the commonly-referenced `sleepercdn.com/content/nfl/players/{id}.jpg` pattern is community-reverse-engineered, not part of Sleeper's published API, so `PlayerAvatar` is wired for it (a `imageUrl` prop with lazy loading and instant fallback) but nothing in the domain layer currently supplies one; every avatar today renders initials or a silhouette. Wiring a real image source is a data-contract change, not a visual one — out of scope here.
+
 ## Architecture
 
 ```

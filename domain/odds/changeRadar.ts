@@ -40,13 +40,14 @@ export function buildChangeRadar(idea: CapturedIdea, liveContext: LiveContext | 
     idea.oddsAtCaptureAmerican !== liveContext.currentOddsAmerican;
 
   if (lineChanged || oddsChanged) {
-    const captureLine = idea.lineAtCapture ?? "?";
+    const selectionLabel = formatSelection(idea.selection);
+    const captureLine = idea.lineAtCapture !== null ? ` ${idea.lineAtCapture}` : "";
     const captureOdds = formatAmerican(idea.oddsAtCaptureAmerican);
-    const currentLine = liveContext.currentLine ?? "?";
+    const currentLine = liveContext.currentLine !== null ? ` ${liveContext.currentLine}` : "";
     const currentOdds = formatAmerican(liveContext.currentOddsAmerican);
     entries.push({
       kind: lineChanged ? "line_change" : "odds_change",
-      text: `Captured: ${idea.selection ?? ""} ${captureLine} (${captureOdds}) · Now: ${idea.selection ?? ""} ${currentLine} (${currentOdds})`,
+      text: `Captured: ${selectionLabel}${captureLine} (${captureOdds}) · Now: ${selectionLabel}${currentLine} (${currentOdds})`,
     });
   }
 
@@ -80,4 +81,9 @@ export function buildChangeRadar(idea: CapturedIdea, liveContext: LiveContext | 
 function formatAmerican(value: number | null): string {
   if (value === null) return "—";
   return value > 0 ? `+${value}` : `${value}`;
+}
+
+function formatSelection(selection: string | null): string {
+  if (!selection) return "";
+  return selection.charAt(0).toUpperCase() + selection.slice(1);
 }
