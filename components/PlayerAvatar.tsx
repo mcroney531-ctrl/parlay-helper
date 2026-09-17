@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import { UserSilhouetteIcon } from "@/components/icons";
 import { teamColorsFor } from "@/components/teamColors";
 
@@ -13,12 +16,10 @@ function initialsFor(name: string | null): string | null {
 
 /**
  * Fixed circular identity slot used everywhere a player appears.
- * Resolution order: validated Sleeper image → initials → silhouette.
- * Parlay Helper's Sleeper integration does not currently surface a
- * documented, terms-cleared headshot URL (see README), so `imageUrl` is
- * accepted for forward-compatibility but is expected to be null today —
- * the initials/silhouette fallback is what actually renders. Fixed size
- * and no async layout change, so nothing shifts if an image ever arrives.
+ * Resolution order: validated image → initials → silhouette. Fixed size
+ * and lazy loading, so nothing shifts if an image arrives late, and a
+ * 404/broken image (retired player, no photo on file, offline) falls back
+ * to initials/silhouette immediately rather than showing a broken icon.
  */
 export function PlayerAvatar({
   name,
@@ -33,9 +34,20 @@ export function PlayerAvatar({
   size?: "default" | "compact";
   teamRing?: boolean;
 }) {
+  // Reset the failure flag during render (not an effect) whenever the URL
+  // itself changes — React's recommended pattern for "adjusting state when
+  // a prop changes" without an extra render-then-effect round trip.
+  const [imageFailed, setImageFailed] = useState(false);
+  const [lastImageUrl, setLastImageUrl] = useState(imageUrl);
+  if (imageUrl !== lastImageUrl) {
+    setLastImageUrl(imageUrl);
+    setImageFailed(false);
+  }
+
   const dimension = size === "compact" ? "var(--avatar-size-compact)" : "var(--avatar-size)";
   const initials = initialsFor(name);
   const colors = teamColorsFor(team ?? null);
+  const showImage = Boolean(imageUrl) && !imageFailed;
 
   const inner = (
     <span
@@ -47,18 +59,16 @@ export function PlayerAvatar({
         color: initials ? "var(--color-brand)" : "var(--color-muted)",
       }}
     >
-      {imageUrl ? (
+      {showImage ? (
         // eslint-disable-next-line @next/next/no-img-element -- remote, unpredictable-domain avatar; not an app asset for next/image to optimize.
         <img
-          src={imageUrl}
+          src={imageUrl as string}
           alt=""
           width={44}
           height={44}
           loading="lazy"
           className="h-full w-full object-cover"
-          onError={(e) => {
-            e.currentTarget.style.display = "none";
-          }}
+          onError={() => setImageFailed(true)}
         />
       ) : initials ? (
         <span aria-hidden="true">{initials}</span>

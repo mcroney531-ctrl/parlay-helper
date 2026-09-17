@@ -8,6 +8,7 @@ import { Select, TextInput } from "@/components/FormControls";
 import { Card } from "@/components/Card";
 import { Pill } from "@/components/StatusChip";
 import { PlayerAvatar } from "@/components/PlayerAvatar";
+import { sleeperHeadshotUrl } from "@/components/sleeperImage";
 import { SearchIcon } from "@/components/icons";
 import type { FinalizedParlay } from "@/domain/types";
 
@@ -49,7 +50,7 @@ function FinalizedCard({ parlay, expanded, onToggle }: { parlay: FinalizedParlay
       <ul className="mt-1 flex flex-col gap-1.5">
         {shownLegs.map((leg) => (
           <li key={leg.ideaId} className="flex items-center gap-2 text-sm" style={{ color: "var(--color-ink)" }}>
-            <PlayerAvatar name={leg.playerName} team={leg.team} size="compact" />
+            <PlayerAvatar name={leg.playerName} team={leg.team} imageUrl={sleeperHeadshotUrl(leg.playerId)} size="compact" />
             {[leg.playerName, leg.marketLabel, leg.selection, leg.lineAtFinalize ?? leg.lineAtCapture]
               .filter((v) => v !== null && v !== undefined && v !== "")
               .join(" · ")}

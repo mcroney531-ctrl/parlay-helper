@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { CapturedIdea } from "@/domain/types";
 import { ConfidenceBadge } from "@/components/ConfidenceBadge";
 import { PlayerAvatar } from "@/components/PlayerAvatar";
+import { sleeperHeadshotUrl } from "@/components/sleeperImage";
 import { Pill } from "@/components/StatusChip";
 import { Button, Select } from "@/components/FormControls";
 import { CheckIcon } from "@/components/icons";
@@ -65,7 +66,7 @@ export function IdeaCard({ idea, variant }: { idea: CapturedIdea; variant: "comp
         }}
       >
         <div className="flex items-start gap-3">
-          <PlayerAvatar name={idea.playerName} team={idea.team} />
+          <PlayerAvatar name={idea.playerName} team={idea.team} imageUrl={sleeperHeadshotUrl(idea.playerId)} />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold" style={{ color: "var(--color-ink)" }}>
               {idea.rawText}

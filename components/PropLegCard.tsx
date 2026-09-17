@@ -3,6 +3,7 @@
 import type { CapturedIdea, LiveContext } from "@/domain/types";
 import { buildChangeRadar } from "@/domain/odds/changeRadar";
 import { PlayerAvatar } from "@/components/PlayerAvatar";
+import { sleeperHeadshotUrl } from "@/components/sleeperImage";
 import { Pill } from "@/components/StatusChip";
 import { AlertCircleIcon } from "@/components/icons";
 import { teamColorsFor } from "@/components/teamColors";
@@ -47,7 +48,7 @@ export function PropLegCard({
         }
       />
       <div className="flex w-full items-start gap-3 p-3" style={{ background: "var(--color-surface)" }}>
-        <PlayerAvatar name={idea.playerName} team={idea.team} teamRing />
+        <PlayerAvatar name={idea.playerName} team={idea.team} imageUrl={sleeperHeadshotUrl(idea.playerId)} teamRing />
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <p className="text-base font-semibold" style={{ color: "var(--color-ink)" }}>

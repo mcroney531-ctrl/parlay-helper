@@ -55,6 +55,7 @@ export async function finalizeCandidate(
 
     legSnapshots.push({
       ideaId: idea.id,
+      playerId: idea.playerId,
       playerName: idea.playerName,
       team: idea.team,
       opponent: idea.opponent,

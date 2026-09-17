@@ -68,6 +68,7 @@ export type CandidateParlay = {
 
 export type FinalizedLegSnapshot = {
   ideaId: string;
+  playerId: string | null;
   playerName: string | null;
   team: string | null;
   opponent: string | null;
