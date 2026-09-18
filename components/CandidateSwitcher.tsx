@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { CandidateParlay } from "@/domain/types";
 import { cloneCandidate, createCandidate, deleteCandidate, renameCandidate } from "@/domain/candidates/candidateService";
 import { useData } from "@/app/DataProvider";
@@ -20,6 +20,8 @@ export function CandidateSwitcher({
   const [sportsbook, setSportsbook] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -92,34 +94,66 @@ export function CandidateSwitcher({
       </div>
 
       {activeId && !renamingId && (
-        <div className="flex gap-4 text-sm font-semibold">
-          <Button
-            variant="text"
-            onClick={() => {
-              const candidate = candidates.find((c) => c.id === activeId);
-              if (candidate) startRename(candidate);
-            }}
+        <div
+          ref={menuRef}
+          className="relative self-start"
+          onBlur={(e) => {
+            if (!menuRef.current?.contains(e.relatedTarget as Node | null)) setMenuOpen(false);
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-expanded={menuOpen}
+            aria-label="Slip settings"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-lg"
+            style={{ color: "var(--color-muted)" }}
           >
-            Rename
-          </Button>
-          <Button
-            variant="text"
-            onClick={() => {
-              const candidate = candidates.find((c) => c.id === activeId);
-              if (candidate) handleClone(candidate);
-            }}
-          >
-            Clone
-          </Button>
-          <Button
-            variant="destructive"
-            onClick={() => {
-              const candidate = candidates.find((c) => c.id === activeId);
-              if (candidate) handleDelete(candidate);
-            }}
-          >
-            Delete
-          </Button>
+            ⋯
+          </button>
+          {menuOpen && (
+            <div
+              className="absolute left-0 top-full z-20 mt-1 flex min-w-[140px] flex-col rounded-[var(--radius-control)] border py-1 shadow-md"
+              style={{ borderColor: "var(--color-border)", background: "var(--color-surface)" }}
+            >
+              <button
+                type="button"
+                className="px-3 py-2 text-left text-sm font-medium"
+                style={{ color: "var(--color-ink)" }}
+                onClick={() => {
+                  const candidate = candidates.find((c) => c.id === activeId);
+                  if (candidate) startRename(candidate);
+                  setMenuOpen(false);
+                }}
+              >
+                Rename
+              </button>
+              <button
+                type="button"
+                className="px-3 py-2 text-left text-sm font-medium"
+                style={{ color: "var(--color-ink)" }}
+                onClick={() => {
+                  const candidate = candidates.find((c) => c.id === activeId);
+                  if (candidate) handleClone(candidate);
+                  setMenuOpen(false);
+                }}
+              >
+                Clone
+              </button>
+              <button
+                type="button"
+                className="px-3 py-2 text-left text-sm font-medium"
+                style={{ color: "var(--color-danger)" }}
+                onClick={() => {
+                  const candidate = candidates.find((c) => c.id === activeId);
+                  if (candidate) handleDelete(candidate);
+                  setMenuOpen(false);
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          )}
         </div>
       )}
 

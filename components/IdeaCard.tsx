@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import type { CapturedIdea } from "@/domain/types";
 import { ConfidenceBadge } from "@/components/ConfidenceBadge";
 import { PlayerAvatar } from "@/components/PlayerAvatar";
@@ -8,27 +9,39 @@ import { sleeperHeadshotUrl } from "@/components/sleeperImage";
 import { Pill } from "@/components/StatusChip";
 import { Button, Select } from "@/components/FormControls";
 import { CheckIcon } from "@/components/icons";
-import { StructuredDetailsForm, valuesFromIdea, valuesToPatch } from "@/components/StructuredDetailsForm";
+import { IdeaDetailsSheet } from "@/components/IdeaDetailsSheet";
+import { valuesToPatch, type StructuredFormValues } from "@/components/StructuredDetailsForm";
 import { archiveIdea, unarchiveIdea, updateIdeaDetails } from "@/domain/ideas/ideaService";
 import { addLegToCandidate } from "@/domain/candidates/candidateService";
 import { useData } from "@/app/DataProvider";
-import type { CandidateParlay } from "@/domain/types";
 
 /**
  * Shared idea card used by both Capture ("Recently Captured", compact) and
- * Bucket (full — search/filter/archive/add-to-candidate). Keeping one
- * component means the two screens can never silently drift apart on the
- * same underlying record.
+ * Bucket/Ideas (full — search/filter/archive/add-to-slip). The primary
+ * action always matches the idea's actual state relative to the current
+ * slip, instead of exposing a candidate-picker on every card.
  */
 export function IdeaCard({ idea, variant }: { idea: CapturedIdea; variant: "compact" | "full" }) {
-  const { refreshIdeas, refreshCandidates, candidates } = useData();
+  const { refreshIdeas, refreshCandidates, candidates, activeCandidate, activeCandidateId } = useData();
   const [editing, setEditing] = useState(false);
-  const [selectedCandidateId, setSelectedCandidateId] = useState<string>(() => candidates.at(-1)?.id ?? "");
+  const [addingToOther, setAddingToOther] = useState(false);
+  const [otherCandidateId, setOtherCandidateId] = useState("");
   const [addedMessage, setAddedMessage] = useState<string | null>(null);
 
-  async function handleSave(values: ReturnType<typeof valuesFromIdea>) {
+  const inCurrentSlip = Boolean(activeCandidate?.ideaIds.includes(idea.id));
+  const otherCandidates = candidates.filter((c) => c.id !== activeCandidateId);
+
+  async function saveDetails(values: StructuredFormValues) {
     await updateIdeaDetails(idea.id, valuesToPatch(values));
     await refreshIdeas();
+    setEditing(false);
+  }
+
+  async function saveDetailsAndAddToSlip(values: StructuredFormValues) {
+    await updateIdeaDetails(idea.id, valuesToPatch(values));
+    await refreshIdeas();
+    if (activeCandidateId) await addLegToCandidate(activeCandidateId, idea.id);
+    await refreshCandidates();
     setEditing(false);
   }
 
@@ -38,12 +51,19 @@ export function IdeaCard({ idea, variant }: { idea: CapturedIdea; variant: "comp
     await refreshIdeas();
   }
 
-  async function handleAddToCandidate() {
-    if (!selectedCandidateId) return;
-    await addLegToCandidate(selectedCandidateId, idea.id);
+  async function handleAddToCurrentSlip() {
+    if (!activeCandidateId) return;
+    await addLegToCandidate(activeCandidateId, idea.id);
     await refreshCandidates();
-    const candidate = candidates.find((c) => c.id === selectedCandidateId);
-    setAddedMessage(`Added to ${candidate?.name ?? "candidate"}.`);
+  }
+
+  async function handleAddToOther() {
+    if (!otherCandidateId) return;
+    await addLegToCandidate(otherCandidateId, idea.id);
+    await refreshCandidates();
+    const candidate = candidates.find((c) => c.id === otherCandidateId);
+    setAddedMessage(`Added to ${candidate?.name ?? "slip"}.`);
+    setAddingToOther(false);
     window.setTimeout(() => setAddedMessage(null), 2000);
   }
 
@@ -51,16 +71,13 @@ export function IdeaCard({ idea, variant }: { idea: CapturedIdea; variant: "comp
     .filter((v) => v !== null && v !== undefined && v !== "")
     .join(" · ");
 
-  const selectedCandidate: CandidateParlay | undefined = candidates.find((c) => c.id === selectedCandidateId);
-  const alreadyAdded = Boolean(selectedCandidate?.ideaIds.includes(idea.id));
-
   return (
     <li>
       <div
         className="rounded-[var(--radius-card)] border-l-[3px] border-y border-r p-3"
         style={{
           borderColor: "var(--color-border)",
-          borderLeftColor: idea.detailsStatus === "needs_details" ? "var(--color-action)" : "var(--color-border)",
+          borderLeftColor: idea.detailsStatus === "needs_details" ? "var(--color-caution-fg)" : "var(--color-border)",
           background: "var(--color-surface)",
           opacity: idea.archivedAt ? 0.6 : 1,
         }}
@@ -85,7 +102,6 @@ export function IdeaCard({ idea, variant }: { idea: CapturedIdea; variant: "comp
               {idea.archivedAt && <Pill tone="neutral">Archived</Pill>}
               <span className="text-xs" style={{ color: "var(--color-muted)" }}>
                 {new Date(idea.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                {variant === "full" && idea.detailsStatus === "needs_details" ? ` · ${idea.confidence === "unrated" ? "Unrated" : idea.confidence}` : ""}
               </span>
             </div>
             {variant === "full" && idea.note && (
@@ -96,50 +112,36 @@ export function IdeaCard({ idea, variant }: { idea: CapturedIdea; variant: "comp
           </div>
         </div>
 
-        <div className="mt-2 flex flex-wrap items-center gap-3 border-t pt-2" style={{ borderColor: "var(--color-border)" }}>
-          <Button variant="text" onClick={() => setEditing((v) => !v)}>
-            {editing ? "Close" : idea.detailsStatus === "needs_details" ? "Add details" : "Edit details"}
-          </Button>
-          {variant === "full" && (
-            <Button variant="text" onClick={handleArchiveToggle} style={{ color: "var(--color-muted)" }}>
-              {idea.archivedAt ? "Unarchive" : "Archive"}
-            </Button>
-          )}
-
-          {variant === "full" && !idea.archivedAt && candidates.length > 0 && (
-            <span className="ml-auto flex items-center gap-2">
-              <Select
-                value={selectedCandidateId}
-                onChange={(e) => setSelectedCandidateId(e.target.value)}
-                className="w-auto py-1.5 text-xs"
-                aria-label={`Candidate for "${idea.rawText}"`}
-              >
-                {candidates.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </Select>
-              {alreadyAdded ? (
+        {!idea.archivedAt && (
+          <div className="mt-2.5 flex items-center gap-2 border-t pt-2.5" style={{ borderColor: "var(--color-border)" }}>
+            {idea.detailsStatus === "needs_details" ? (
+              <Button onClick={() => setEditing(true)} className="!min-h-[36px] flex-1 px-3 py-1.5 text-sm">
+                Complete details
+              </Button>
+            ) : inCurrentSlip ? (
+              <>
                 <Pill tone="success" icon={<CheckIcon className="h-3 w-3" />}>
                   Added
                 </Pill>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleAddToCandidate}
-                  aria-label={`Add "${idea.rawText}" to ${selectedCandidate?.name ?? "candidate"}`}
-                  className="flex h-9 w-9 items-center justify-center rounded-full text-white"
-                  style={{ background: "var(--color-action)" }}
-                >
-                  <span aria-hidden="true" className="text-lg leading-none">
-                    +
-                  </span>
-                </button>
-              )}
-            </span>
-          )}
-        </div>
+                <Link href="/builder" className="text-sm font-semibold" style={{ color: "var(--color-action)" }}>
+                  View slip →
+                </Link>
+              </>
+            ) : activeCandidateId ? (
+              <Button onClick={handleAddToCurrentSlip} className="!min-h-[36px] flex-1 px-3 py-1.5 text-sm">
+                Add to slip
+              </Button>
+            ) : (
+              <Link
+                href="/builder"
+                className="flex-1 rounded-[var(--radius-control)] px-3 py-1.5 text-center text-sm font-semibold text-white"
+                style={{ background: "var(--color-action)" }}
+              >
+                Start a slip
+              </Link>
+            )}
+          </div>
+        )}
 
         {addedMessage && (
           <p aria-live="polite" className="mt-1 text-xs font-medium" style={{ color: "var(--color-action)" }}>
@@ -147,10 +149,51 @@ export function IdeaCard({ idea, variant }: { idea: CapturedIdea; variant: "comp
           </p>
         )}
 
-        {editing && (
-          <StructuredDetailsForm initial={valuesFromIdea(idea)} onSave={handleSave} onCancel={() => setEditing(false)} />
+        <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs">
+          {idea.detailsStatus !== "needs_details" && (
+            <Button variant="text" onClick={() => setEditing(true)} className="text-xs">
+              Edit details
+            </Button>
+          )}
+          {variant === "full" && (
+            <Button variant="text" onClick={handleArchiveToggle} className="text-xs" style={{ color: "var(--color-muted)" }}>
+              {idea.archivedAt ? "Unarchive" : "Archive"}
+            </Button>
+          )}
+          {variant === "full" && !idea.archivedAt && idea.detailsStatus !== "needs_details" && otherCandidates.length > 0 && (
+            <Button variant="text" onClick={() => setAddingToOther((v) => !v)} className="text-xs" style={{ color: "var(--color-muted)" }}>
+              Add to another slip
+            </Button>
+          )}
+        </div>
+
+        {addingToOther && (
+          <div className="mt-2 flex items-center gap-2">
+            <Select value={otherCandidateId} onChange={(e) => setOtherCandidateId(e.target.value)} className="w-auto py-1.5 text-xs" aria-label="Choose a slip">
+              <option value="">Choose a slip…</option>
+              {otherCandidates.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+            <Button onClick={handleAddToOther} disabled={!otherCandidateId} className="!min-h-[32px] px-2.5 py-1 text-xs">
+              Add
+            </Button>
+          </div>
         )}
       </div>
+
+      {editing && (
+        <IdeaDetailsSheet
+          idea={idea}
+          onClose={() => setEditing(false)}
+          onSave={saveDetails}
+          slipName={activeCandidate?.name}
+          offerAddToSlip={!inCurrentSlip && Boolean(activeCandidateId)}
+          onSaveAndAddToSlip={saveDetailsAndAddToSlip}
+        />
+      )}
     </li>
   );
 }

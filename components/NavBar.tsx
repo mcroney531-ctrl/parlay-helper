@@ -4,10 +4,13 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BucketIcon, BuildIcon, CaptureIcon, HistoryIcon } from "@/components/icons";
 
+// User-facing labels only — internal route paths and domain naming
+// ("candidate", "bucket") are unchanged; renaming those isn't needed to
+// fix what users see in the nav.
 const TABS = [
   { href: "/capture", label: "Capture", Icon: CaptureIcon },
-  { href: "/bucket", label: "Bucket", Icon: BucketIcon },
-  { href: "/builder", label: "Build", Icon: BuildIcon },
+  { href: "/bucket", label: "Ideas", Icon: BucketIcon },
+  { href: "/builder", label: "Slip", Icon: BuildIcon },
   { href: "/history", label: "History", Icon: HistoryIcon },
 ];
 

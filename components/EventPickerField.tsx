@@ -81,6 +81,7 @@ export function EventPickerField({
       }
     } else if (e.key === "Escape") {
       e.preventDefault();
+      e.stopPropagation(); // closing the suggestion list only — a wrapping sheet must not also close
       setFilter("");
       setActiveIndex(-1);
     }
@@ -179,6 +180,10 @@ export function EventPickerField({
                   type="button"
                   role="option"
                   aria-selected={index === activeIndex}
+                  // See PlayerSearchField's identical fix: keeps focus on
+                  // the input through mousedown so a mouse click actually
+                  // reaches this button instead of the list closing first.
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => selectEvent(event)}
                   onMouseEnter={() => setActiveIndex(index)}
                   className="block w-full px-2 py-1.5 text-left text-sm"

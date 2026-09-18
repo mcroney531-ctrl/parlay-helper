@@ -1,10 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useData } from "@/app/DataProvider";
 import { PageShell } from "@/components/PageShell";
 import { HistoryIcon } from "@/components/icons";
-import { Select, TextInput } from "@/components/FormControls";
+import { Button, Select, TextInput } from "@/components/FormControls";
 import { Card } from "@/components/Card";
 import { Pill } from "@/components/StatusChip";
 import { PlayerAvatar } from "@/components/PlayerAvatar";
@@ -44,7 +45,7 @@ function FinalizedCard({ parlay, expanded, onToggle }: { parlay: FinalizedParlay
         </span>
       </div>
       <p className="text-xs" style={{ color: "var(--color-muted)" }}>
-        {parlay.sportsbook} · {parlay.legSnapshots.length} legs · stake {formatCents(parlay.stakeCents)}
+        {parlay.sportsbook} · {parlay.legSnapshots.length} leg{parlay.legSnapshots.length === 1 ? "" : "s"} · stake {formatCents(parlay.stakeCents)}
       </p>
 
       <ul className="mt-1 flex flex-col gap-1.5">
@@ -145,6 +146,24 @@ export default function HistoryPage() {
 
   const effectiveExpandedId = expandedId ?? filtered[0]?.id ?? null;
 
+  if (!loading && finalized.length === 0) {
+    return (
+      <PageShell title="HISTORY" icon={<HistoryIcon className="h-8 w-8" />}>
+        <div className="flex flex-col items-center gap-4 rounded-[var(--radius-card)] border px-4 py-10 text-center" style={{ borderColor: "var(--color-border)" }}>
+          <p className="text-base font-semibold" style={{ color: "var(--color-ink)" }}>
+            Nothing finalized yet
+          </p>
+          <p className="max-w-xs text-sm" style={{ color: "var(--color-muted)" }}>
+            Once you finalize a slip, it shows up here as a permanent, read-only record — never edited or graded.
+          </p>
+          <Link href="/builder">
+            <Button>Go to current slip</Button>
+          </Link>
+        </div>
+      </PageShell>
+    );
+  }
+
   return (
     <PageShell title="HISTORY" icon={<HistoryIcon className="h-8 w-8" />}>
       <div className="flex flex-col gap-4">
@@ -185,9 +204,7 @@ export default function HistoryPage() {
           </p>
         ) : filtered.length === 0 ? (
           <p className="text-sm" style={{ color: "var(--color-muted)" }}>
-            {finalized.length === 0
-              ? "Nothing finalized yet. Finalized slips are permanent, read-only records."
-              : "No finalized slips match these filters."}
+            No finalized slips match these filters.
           </p>
         ) : (
           <ul className="flex flex-col gap-3">

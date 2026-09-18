@@ -4,6 +4,7 @@ import Link from "next/link";
 import { QuickAddForm } from "@/components/QuickAddForm";
 import { IdeaCard } from "@/components/IdeaCard";
 import { PageShell } from "@/components/PageShell";
+import { CurrentSlipTray } from "@/components/CurrentSlipTray";
 import { CaptureIcon } from "@/components/icons";
 import { useData } from "@/app/DataProvider";
 
@@ -18,13 +19,15 @@ export default function CapturePage() {
           <QuickAddForm />
         </section>
 
+        <CurrentSlipTray />
+
         <section>
           <div className="mb-3 flex items-baseline justify-between">
             <h2 className="font-display text-lg" style={{ color: "var(--color-ink)" }}>
               Recently Captured
             </h2>
             <Link href="/bucket" className="text-sm font-semibold" style={{ color: "var(--color-action)" }}>
-              View bucket →
+              View ideas →
             </Link>
           </div>
           {loading ? (
