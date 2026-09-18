@@ -5,7 +5,7 @@
 // widely-relied-upon convention across third-party Sleeper integrations.
 // A missing/retired player simply 404s, which PlayerAvatar treats the same
 // as any other broken image: fall back to initials/silhouette.
-export function sleeperHeadshotUrl(playerId: string | null): string | null {
+export function sleeperHeadshotUrl(playerId: string | null | undefined): string | null {
   if (!playerId) return null;
   return `https://sleepercdn.com/content/nfl/players/${playerId}.jpg`;
 }
