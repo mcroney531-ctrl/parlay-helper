@@ -1,4 +1,5 @@
 import { americanToDecimal, decimalToAmerican, roundAmerican } from "./conversion";
+import { compareSportsbooks, type SportsbookMatch } from "@/domain/sportsbook";
 
 export type LegPriceSource = "current" | "capture" | "unavailable";
 
@@ -7,6 +8,10 @@ export type LegPriceInput = {
   eventId: string | null;
   currentOddsAmerican: number | null;
   captureOddsAmerican: number | null;
+  /** Where captureOddsAmerican was observed (the idea's sportsbookAtCapture). Missing or blank means unknown. */
+  captureSportsbook?: string | null;
+  /** The sportsbook of the slip this estimate is for. Missing or blank means unknown. */
+  slipSportsbook?: string | null;
 };
 
 export type ResolvedLegPrice = {
@@ -14,20 +19,38 @@ export type ResolvedLegPrice = {
   eventId: string | null;
   oddsAmerican: number | null;
   source: LegPriceSource;
+  /**
+   * Only when source is "capture": the book the price was observed at and
+   * whether it is the slip's book. A "current" price is always the slip's
+   * book (live context is keyed per book), so it carries no capture book.
+   */
+  captureBook?: { label: string | null; match: SportsbookMatch };
 };
 
 /**
  * Resolves which price a leg's estimate should use. Never silently
  * substitutes: the result always names its source so the UI can say
  * "using capture price" or "cannot be calculated" instead of quietly
- * blending values.
+ * blending values. A capture price also names the book it came from and
+ * whether that is the slip's book; it is still used either way (whether
+ * other-book capture prices should count toward the estimate is an open
+ * product question), but it is never presented as the slip book's price.
  */
 export function resolveLegPrice(leg: LegPriceInput): ResolvedLegPrice {
   if (leg.currentOddsAmerican !== null) {
     return { ideaId: leg.ideaId, eventId: leg.eventId, oddsAmerican: leg.currentOddsAmerican, source: "current" };
   }
   if (leg.captureOddsAmerican !== null) {
-    return { ideaId: leg.ideaId, eventId: leg.eventId, oddsAmerican: leg.captureOddsAmerican, source: "capture" };
+    return {
+      ideaId: leg.ideaId,
+      eventId: leg.eventId,
+      oddsAmerican: leg.captureOddsAmerican,
+      source: "capture",
+      captureBook: {
+        label: leg.captureSportsbook?.trim() || null,
+        match: compareSportsbooks(leg.captureSportsbook, leg.slipSportsbook),
+      },
+    };
   }
   return { ideaId: leg.ideaId, eventId: leg.eventId, oddsAmerican: null, source: "unavailable" };
 }

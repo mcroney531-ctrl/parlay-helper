@@ -147,7 +147,9 @@ async function mergeLiveContext(
   const fetchedAt = patch.fetchedAt ?? existing?.fetchedAt ?? new Date().toISOString();
   const merged: LiveContext = {
     ideaId,
+    // The repository stores this under the canonical book id; the text is kept for display.
     sportsbook,
+    sportsbookLabel: sportsbook.trim() || existing?.sportsbookLabel,
     eventId: existing?.eventId ?? null,
     currentLine: existing?.currentLine ?? null,
     currentOddsAmerican: existing?.currentOddsAmerican ?? null,

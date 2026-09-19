@@ -103,6 +103,8 @@ export default function BuilderPage() {
       eventId: leg.eventId,
       currentOddsAmerican: liveContextFor(leg.id)?.currentOddsAmerican ?? null,
       captureOddsAmerican: leg.oddsAtCaptureAmerican,
+      captureSportsbook: leg.sportsbookAtCapture,
+      slipSportsbook: sportsbook,
     })),
   );
 

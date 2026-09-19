@@ -32,7 +32,14 @@ export type CapturedIdea = {
 
 export type LiveContext = {
   ideaId: string;
+  /**
+   * Canonical sportsbook id (see canonicalSportsbookId), part of the IDB key.
+   * The liveContext repository writes it in canonical form regardless of what
+   * the caller passes; do not use it as display text.
+   */
   sportsbook: string;
+  /** The sportsbook as the user typed it, for display. Optional: rows written before this field have none. */
+  sportsbookLabel?: string;
   eventId: string | null;
   currentLine: number | null;
   currentOddsAmerican: number | null;

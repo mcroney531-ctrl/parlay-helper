@@ -1,3 +1,5 @@
+import { canonicalSportsbookId } from "@/domain/sportsbook";
+
 // Maps our internal league label to The Odds API's sport key.
 // https://the-odds-api.com/sports-odds-data/sports-apis.html
 const LEAGUE_TO_SPORT_KEY: Record<string, string> = {
@@ -40,5 +42,6 @@ export function sportForLeague(league: string | null): string | null {
 }
 
 export function bookmakerKeyForSportsbook(sportsbook: string): string | null {
-  return BOOKMAKER_KEY[sportsbook.trim().toLowerCase().replace(/\s+/g, "")] ?? null;
+  const id = canonicalSportsbookId(sportsbook);
+  return id === null ? null : (BOOKMAKER_KEY[id] ?? null);
 }

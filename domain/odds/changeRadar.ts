@@ -1,7 +1,8 @@
 import type { CapturedIdea, LiveContext } from "@/domain/types";
+import { compareSportsbooks } from "@/domain/sportsbook";
 
 export type ChangeRadarEntry = {
-  kind: "line_change" | "odds_change" | "status_change" | "game_change" | "stale" | "not_found" | "ok";
+  kind: "line_change" | "odds_change" | "cross_book" | "status_change" | "game_change" | "stale" | "not_found" | "ok";
   text: string;
 };
 
@@ -26,10 +27,12 @@ export function buildChangeRadar(idea: CapturedIdea, liveContext: LiveContext | 
     return entries;
   }
 
+  const liveBook = liveContext.sportsbookLabel ?? liveContext.sportsbook;
+
   if (liveContext.marketAvailable === false) {
     entries.push({
       kind: "not_found",
-      text: `Market no longer offered by ${liveContext.sportsbook}.`,
+      text: `Market no longer offered by ${liveBook}.`,
     });
   }
 
@@ -42,16 +45,37 @@ export function buildChangeRadar(idea: CapturedIdea, liveContext: LiveContext | 
     liveContext.currentOddsAmerican !== null &&
     idea.oddsAtCaptureAmerican !== liveContext.currentOddsAmerican;
 
+  // The captured line and odds were observed at idea.sportsbookAtCapture; the
+  // live values are for the slip's book. Only a same-book difference is a
+  // "change since capture". Across books, or when the capture book was never
+  // recorded, the values are shown with their books and not called a change.
+  const captureBook = compareSportsbooks(idea.sportsbookAtCapture, liveContext.sportsbook);
+  const captureBookText = idea.sportsbookAtCapture?.trim() ?? "";
+
   if (lineChanged || oddsChanged) {
     const selectionLabel = formatSelection(idea.selection);
     const captureLine = idea.lineAtCapture !== null ? ` ${idea.lineAtCapture}` : "";
     const captureOdds = formatAmerican(idea.oddsAtCaptureAmerican);
     const currentLine = liveContext.currentLine !== null ? ` ${liveContext.currentLine}` : "";
     const currentOdds = formatAmerican(liveContext.currentOddsAmerican);
-    entries.push({
-      kind: lineChanged ? "line_change" : "odds_change",
-      text: `Captured: ${selectionLabel}${captureLine} (${captureOdds}) · Now: ${selectionLabel}${currentLine} (${currentOdds})`,
-    });
+    const captured = `${selectionLabel}${captureLine} (${captureOdds})`;
+    const now = `${selectionLabel}${currentLine} (${currentOdds})`;
+    if (captureBook === "same") {
+      entries.push({
+        kind: lineChanged ? "line_change" : "odds_change",
+        text: `Captured: ${captured} · Now: ${now}`,
+      });
+    } else if (captureBook === "different") {
+      entries.push({
+        kind: "cross_book",
+        text: `Captured at ${captureBookText}: ${captured} · Now at ${liveBook}: ${now} — different books, not a change since capture.`,
+      });
+    } else {
+      entries.push({
+        kind: "cross_book",
+        text: `Captured (book not recorded): ${captured} · Now at ${liveBook}: ${now} — the capture book is unknown, so this may not be a change.`,
+      });
+    }
   }
 
   if (liveContext.playerStatus && liveContext.playerStatus !== "Active") {
@@ -80,7 +104,16 @@ export function buildChangeRadar(idea: CapturedIdea, liveContext: LiveContext | 
   }
 
   if (entries.length === 0 && oddsAge !== null) {
-    entries.push({ kind: "ok", text: `No change since capture. Checked ${oddsAge} min ago.` });
+    const compared =
+      (idea.lineAtCapture !== null && liveContext.currentLine !== null) ||
+      (idea.oddsAtCaptureAmerican !== null && liveContext.currentOddsAmerican !== null);
+    let text = `No change since capture. Checked ${oddsAge} min ago.`;
+    if (compared && captureBook === "different") {
+      text = `Matches the capture values, but they were captured at ${captureBookText} and this is ${liveBook}. Checked ${oddsAge} min ago.`;
+    } else if (compared && captureBook === "unknown") {
+      text = `Matches the capture values, but the capture book was not recorded. Checked ${oddsAge} min ago.`;
+    }
+    entries.push({ kind: "ok", text });
   }
 
   return entries;

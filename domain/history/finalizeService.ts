@@ -74,6 +74,8 @@ export async function finalizeCandidate(
       eventId: idea.eventId,
       currentOddsAmerican: liveContext?.currentOddsAmerican ?? null,
       captureOddsAmerican: idea.oddsAtCaptureAmerican,
+      captureSportsbook: idea.sportsbookAtCapture,
+      slipSportsbook: candidate.sportsbook,
     });
   }
 

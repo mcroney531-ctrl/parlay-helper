@@ -63,6 +63,14 @@ export function EstimatePanel({
           {estimate.legSources.filter((l) => l.source === "capture").length > 0
             ? "Some legs use capture-time price — current price unavailable for those legs."
             : "Using current prices for all legs."}
+          {(() => {
+            const otherBook = estimate.legSources.filter(
+              (l) => l.source === "capture" && l.captureBook?.match !== "same",
+            ).length;
+            return otherBook > 0
+              ? ` ${otherBook} of those ${otherBook === 1 ? "was" : "were"} captured at a different or unrecorded sportsbook.`
+              : "";
+          })()}
         </p>
       )}
     </Card>
