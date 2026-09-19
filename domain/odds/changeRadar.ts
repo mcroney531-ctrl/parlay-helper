@@ -7,8 +7,11 @@ export type ChangeRadarEntry = {
 
 const STALE_MINUTES = 60;
 
-function minutesAgo(iso: string): number {
-  return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+/** Null when the timestamp is missing or unparseable: an unknown age is never treated as 0 or as fresh. */
+function minutesAgo(iso: string | null): number | null {
+  if (!iso) return null;
+  const then = new Date(iso).getTime();
+  return Number.isNaN(then) ? null : Math.max(0, Math.round((Date.now() - then) / 60000));
 }
 
 /**
@@ -62,17 +65,22 @@ export function buildChangeRadar(idea: CapturedIdea, liveContext: LiveContext | 
     entries.push({ kind: "game_change", text: `Game status: ${liveContext.gameStatus}` });
   }
 
-  const age = minutesAgo(liveContext.fetchedAt);
-  if (age > STALE_MINUTES) {
-    entries.push({ kind: "stale", text: `Odds last checked ${age} min ago — may be stale.` });
+  // Odds age comes from oddsFetchedAt only. fetchedAt is "whichever provider
+  // wrote last" and the player-status refresh overwrites it with the Sleeper
+  // snapshot's own time, so it says nothing reliable about the price.
+  const oddsAge = minutesAgo(liveContext.oddsFetchedAt);
+  if (oddsAge === null) {
+    entries.push({ kind: "not_found", text: "No odds fetched yet for this leg." });
+  } else if (oddsAge > STALE_MINUTES) {
+    entries.push({ kind: "stale", text: `Odds last checked ${oddsAge} min ago — may be stale.` });
   }
 
   for (const warning of liveContext.warnings) {
     entries.push({ kind: "stale", text: warning });
   }
 
-  if (entries.length === 0) {
-    entries.push({ kind: "ok", text: `No change since capture. Checked ${age} min ago.` });
+  if (entries.length === 0 && oddsAge !== null) {
+    entries.push({ kind: "ok", text: `No change since capture. Checked ${oddsAge} min ago.` });
   }
 
   return entries;

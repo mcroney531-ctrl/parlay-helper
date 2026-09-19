@@ -17,7 +17,7 @@ import { calculateCombinedEstimate, calculatePayoutCents, hasSameGameCombination
 import { detectCorrelationSignals } from "@/domain/rules/correlation";
 import { detectConcentrationSignals } from "@/domain/rules/concentration";
 import { createCandidate, removeLegFromCandidate } from "@/domain/candidates/candidateService";
-import { refreshCandidateContext } from "@/domain/odds/refreshService";
+import { describeRefreshProblem, refreshCandidateContext } from "@/domain/odds/refreshService";
 import { liveContextKey } from "@/storage/indexeddb/repositories/liveContextRepository";
 
 function kickoffWindowFor(scheduledStart: string | null): string | null {
@@ -135,8 +135,9 @@ export default function BuilderPage() {
     setRefreshing(true);
     setRefreshError(null);
     try {
-      await refreshCandidateContext(candidate, ideas);
+      const result = await refreshCandidateContext(candidate, ideas);
       await refreshLiveContext();
+      setRefreshError(describeRefreshProblem(result));
     } catch (err) {
       setRefreshError(err instanceof Error ? err.message : "Could not refresh odds/status.");
     } finally {

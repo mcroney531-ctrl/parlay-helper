@@ -17,8 +17,80 @@ type OddsApiResult = {
   outcomes: OddsApiOutcome[];
 };
 
+/**
+ * Why a whole provider request produced nothing usable. Kept separate from
+ * per-event outcomes: a request-level failure means no event was evaluated,
+ * so no LiveContext is written and the caller learns about it only through
+ * the returned result.
+ */
+export type RefreshRequestFailure =
+  | { kind: "transport"; message: string }
+  | { kind: "rate_limited"; httpStatus: 429; retryAfterSeconds: number | null }
+  | { kind: "http_error"; httpStatus: number }
+  | { kind: "invalid_response"; httpStatus: number };
+
+export type OddsEventOutcome = {
+  eventId: string;
+  ideaIds: string[];
+  status: OddsApiResult["status"];
+  warning: string | null;
+  /** True only when this event's fetch succeeded and oddsFetchedAt was renewed for its legs. */
+  priceRefreshed: boolean;
+  /** Legs of a successful fetch whose outcome couldn't be confirmed (price cleared, timestamp renewed). */
+  unmatchedIdeaIds: string[];
+};
+
+export type OddsRefreshResult = {
+  /**
+   * ok: every event fetched. partial: some events fetched, some did not.
+   * failed: request-level failure, or no event fetched. not_configured: every
+   * event was for an unsupported book/league. nothing_to_refresh: no leg was
+   * eligible (needs eventId, marketKey and league).
+   */
+  status: "ok" | "partial" | "failed" | "not_configured" | "nothing_to_refresh";
+  attemptedAt: string;
+  failure: RefreshRequestFailure | null;
+  events: OddsEventOutcome[];
+  /** Candidate legs that were not sent to the provider (unrefreshable or missing ideas). */
+  skippedIdeaIds: string[];
+};
+
+export type PlayerStatusRefreshResult = {
+  status: "ok" | "failed" | "nothing_to_refresh";
+  attemptedAt: string;
+  failure: RefreshRequestFailure | null;
+};
+
+export type CandidateRefreshResult = {
+  odds: OddsRefreshResult;
+  playerStatus: PlayerStatusRefreshResult;
+};
+
 function normalizeName(value: string): string {
   return value.trim().toLowerCase();
+}
+
+function parseRetryAfterSeconds(header: string | null): number | null {
+  if (!header) return null;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.ceil(seconds);
+  const at = Date.parse(header);
+  return Number.isNaN(at) ? null : Math.max(0, Math.ceil((at - Date.now()) / 1000));
+}
+
+function failureFromResponse(response: Response): RefreshRequestFailure {
+  if (response.status === 429) {
+    return {
+      kind: "rate_limited",
+      httpStatus: 429,
+      retryAfterSeconds: parseRetryAfterSeconds(response.headers.get("Retry-After")),
+    };
+  }
+  return { kind: "http_error", httpStatus: response.status };
+}
+
+function failureFromError(error: unknown): RefreshRequestFailure {
+  return { kind: "transport", message: error instanceof Error ? error.message : "Network request failed." };
 }
 
 /**
@@ -69,7 +141,10 @@ async function mergeLiveContext(
   patch: Partial<LiveContext>,
 ): Promise<void> {
   const existing = await getLiveContext(ideaId, sportsbook);
-  const now = patch.fetchedAt ?? new Date().toISOString();
+  // A patch without fetchedAt is a failed attempt: it must not make older data
+  // look freshly fetched, so the last fetchedAt is kept. Only a record created
+  // by a failed attempt (no prior data) is stamped with the attempt time.
+  const fetchedAt = patch.fetchedAt ?? existing?.fetchedAt ?? new Date().toISOString();
   const merged: LiveContext = {
     ideaId,
     sportsbook,
@@ -87,54 +162,103 @@ async function mergeLiveContext(
     playerStatusSource: existing?.playerStatusSource ?? null,
     warnings: existing?.warnings ?? [],
     ...patch,
-    fetchedAt: now,
+    fetchedAt,
     source: patch.source ?? existing?.source ?? "unknown",
   };
   await putLiveContext(merged);
 }
 
-export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas: CapturedIdea[]): Promise<void> {
+/**
+ * Expected provider failures (offline, 429, non-OK HTTP, per-event provider
+ * errors) are returned in the result rather than thrown, so callers can tell
+ * them apart and a failure in one refresh never blocks the other. Storage
+ * errors still throw.
+ *
+ * Only a successful per-event fetch renews oddsFetchedAt (and fetchedAt) for
+ * that event's legs. A failed or not-found event keeps the last successful
+ * price and timestamp and records only its own warning, so an old price can't
+ * look freshly fetched.
+ */
+export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas: CapturedIdea[]): Promise<OddsRefreshResult> {
+  const attemptedAt = new Date().toISOString();
   const legs = candidate.ideaIds
     .map((id) => ideas.find((idea) => idea.id === id))
     .filter((idea): idea is CapturedIdea => Boolean(idea && idea.eventId && idea.marketKey && idea.league));
+  const sentIds = new Set(legs.map((leg) => leg.id));
+  const skippedIdeaIds = candidate.ideaIds.filter((id) => !sentIds.has(id));
 
-  if (legs.length === 0) return;
+  if (legs.length === 0) {
+    return { status: "nothing_to_refresh", attemptedAt, failure: null, events: [], skippedIdeaIds };
+  }
 
-  const response = await fetch("/api/odds", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      sportsbook: candidate.sportsbook,
-      legs: legs.map((leg) => ({
-        ideaId: leg.id,
-        league: leg.league,
-        eventId: leg.eventId,
-        marketKey: leg.marketKey,
-      })),
-    }),
+  const failed = (failure: RefreshRequestFailure): OddsRefreshResult => ({
+    status: "failed",
+    attemptedAt,
+    failure,
+    events: [],
+    skippedIdeaIds,
   });
 
-  if (!response.ok) return;
-  const { results } = (await response.json()) as { results: OddsApiResult[] };
+  let response: Response;
+  try {
+    response = await fetch("/api/odds", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sportsbook: candidate.sportsbook,
+        legs: legs.map((leg) => ({
+          ideaId: leg.id,
+          league: leg.league,
+          eventId: leg.eventId,
+          marketKey: leg.marketKey,
+        })),
+      }),
+    });
+  } catch (error) {
+    return failed(failureFromError(error));
+  }
 
+  if (!response.ok) return failed(failureFromResponse(response));
+
+  let results: OddsApiResult[];
+  try {
+    const body = (await response.json()) as { results?: OddsApiResult[] };
+    if (!Array.isArray(body.results)) return failed({ kind: "invalid_response", httpStatus: response.status });
+    results = body.results;
+  } catch {
+    return failed({ kind: "invalid_response", httpStatus: response.status });
+  }
+
+  const events: OddsEventOutcome[] = [];
   for (const result of results) {
     const warnings = result.warning ? [result.warning] : [];
+    const event: OddsEventOutcome = {
+      eventId: result.eventId,
+      ideaIds: result.ideaIds,
+      status: result.status,
+      warning: result.warning,
+      priceRefreshed: result.status === "ok",
+      unmatchedIdeaIds: [],
+    };
+    events.push(event);
     for (const ideaId of result.ideaIds) {
       const idea = legs.find((leg) => leg.id === ideaId);
       if (!idea) continue;
       if (result.status !== "ok") {
+        // No oddsFetchedAt / fetchedAt / oddsSource / source: those describe the
+        // last successful fetch and this attempt didn't produce one. Likewise
+        // marketAvailable is written only for not_found, which is an actual
+        // observation; provider_error / not_configured observed nothing, so
+        // they must not reset an earlier true/false to null.
         await mergeLiveContext(ideaId, candidate.sportsbook, {
           eventId: idea.eventId,
-          marketAvailable: result.status === "not_found" ? false : null,
-          oddsFetchedAt: result.fetchedAt,
-          oddsSource: "odds-api",
-          fetchedAt: result.fetchedAt,
-          source: "odds-api",
+          ...(result.status === "not_found" ? { marketAvailable: false } : {}),
           warnings,
         });
         continue;
       }
       const outcome = matchOutcome(idea, result.outcomes);
+      if (outcome === null) event.unmatchedIdeaIds.push(ideaId);
       await mergeLiveContext(ideaId, candidate.sportsbook, {
         eventId: idea.eventId,
         currentLine: outcome?.point ?? null,
@@ -151,22 +275,46 @@ export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas:
       });
     }
   }
+
+  const fetched = events.filter((event) => event.priceRefreshed).length;
+  const status: OddsRefreshResult["status"] =
+    events.length > 0 && events.every((event) => event.status === "not_configured")
+      ? "not_configured"
+      : fetched === 0
+        ? "failed"
+        : fetched === events.length
+          ? "ok"
+          : "partial";
+  return { status, attemptedAt, failure: null, events, skippedIdeaIds };
 }
 
-export async function refreshPlayerStatusForCandidate(candidate: CandidateParlay, ideas: CapturedIdea[]): Promise<void> {
+export async function refreshPlayerStatusForCandidate(
+  candidate: CandidateParlay,
+  ideas: CapturedIdea[],
+): Promise<PlayerStatusRefreshResult> {
+  const attemptedAt = new Date().toISOString();
   const legs = candidate.ideaIds
     .map((id) => ideas.find((idea) => idea.id === id))
     .filter((idea): idea is CapturedIdea => Boolean(idea && idea.playerId));
 
-  if (legs.length === 0) return;
+  if (legs.length === 0) return { status: "nothing_to_refresh", attemptedAt, failure: null };
 
   const playerIds = [...new Set(legs.map((leg) => leg.playerId as string))];
-  const response = await fetch(`/api/sleeper?playerIds=${playerIds.join(",")}`);
-  if (!response.ok) return;
-  const { fetchedAt, players } = (await response.json()) as {
-    fetchedAt: string;
-    players: Record<string, { status: string | null; depthChartPosition: string | null }>;
-  };
+  let response: Response;
+  try {
+    response = await fetch(`/api/sleeper?playerIds=${playerIds.join(",")}`);
+  } catch (error) {
+    return { status: "failed", attemptedAt, failure: failureFromError(error) };
+  }
+  if (!response.ok) return { status: "failed", attemptedAt, failure: failureFromResponse(response) };
+
+  let body: { fetchedAt: string; players: Record<string, { status: string | null; depthChartPosition: string | null }> };
+  try {
+    body = await response.json();
+  } catch {
+    return { status: "failed", attemptedAt, failure: { kind: "invalid_response", httpStatus: response.status } };
+  }
+  const { fetchedAt, players } = body;
 
   for (const idea of legs) {
     const player = players[idea.playerId as string];
@@ -180,6 +328,7 @@ export async function refreshPlayerStatusForCandidate(candidate: CandidateParlay
       source: "sleeper",
     });
   }
+  return { status: "ok", attemptedAt, failure: null };
 }
 
 /**
@@ -187,8 +336,53 @@ export async function refreshPlayerStatusForCandidate(candidate: CandidateParlay
  * LiveContext record per idea. Running them sequentially (never
  * Promise.all) means the second write always merges onto the first's
  * result instead of racing it and silently dropping one side's update.
+ *
+ * Expected provider failures are returned, not thrown, so an odds failure
+ * no longer prevents the player-status refresh (and vice versa). Callers
+ * should reload live context after this resolves to pick up whichever
+ * writes succeeded.
  */
-export async function refreshCandidateContext(candidate: CandidateParlay, ideas: CapturedIdea[]): Promise<void> {
-  await refreshOddsForCandidate(candidate, ideas);
-  await refreshPlayerStatusForCandidate(candidate, ideas);
+export async function refreshCandidateContext(
+  candidate: CandidateParlay,
+  ideas: CapturedIdea[],
+): Promise<CandidateRefreshResult> {
+  const odds = await refreshOddsForCandidate(candidate, ideas);
+  const playerStatus = await refreshPlayerStatusForCandidate(candidate, ideas);
+  return { odds, playerStatus };
+}
+
+function describeFailure(source: string, failure: RefreshRequestFailure): string {
+  switch (failure.kind) {
+    case "transport":
+      return `Couldn't reach the ${source} service (offline?). Showing the last data we have.`;
+    case "rate_limited":
+      return failure.retryAfterSeconds === null
+        ? `Too many refreshes. Try again shortly.`
+        : `Too many refreshes. Try again in ${failure.retryAfterSeconds}s.`;
+    case "http_error":
+    case "invalid_response":
+      return `The ${source} service returned an error (HTTP ${failure.httpStatus}). Showing the last data we have.`;
+  }
+}
+
+/**
+ * One line for the refresh error slot, or null when there's nothing the user
+ * needs told beyond the per-leg warnings that are already stored and rendered
+ * (not_configured, nothing_to_refresh, plain success).
+ */
+export function describeRefreshProblem(result: CandidateRefreshResult): string | null {
+  const messages: string[] = [];
+  const { odds, playerStatus } = result;
+  if (odds.failure) {
+    messages.push(describeFailure("odds", odds.failure));
+  } else if (odds.status === "failed") {
+    messages.push("The odds provider couldn't return prices for these games. Showing the last prices we have.");
+  } else if (odds.status === "partial") {
+    const fetched = odds.events.filter((event) => event.priceRefreshed).length;
+    messages.push(
+      `Odds refreshed for ${fetched} of ${odds.events.length} games; the rest kept their last prices (see leg warnings).`,
+    );
+  }
+  if (playerStatus.failure) messages.push(describeFailure("player status", playerStatus.failure));
+  return messages.length > 0 ? messages.join(" ") : null;
 }
