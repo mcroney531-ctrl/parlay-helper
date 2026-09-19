@@ -52,6 +52,9 @@ export async function finalizeCandidate(
       continue;
     }
     const liveContext = await getLiveContext(ideaId, candidate.sportsbook);
+    // A market the book no longer offers has no price or line to record: what is
+    // still stored is the last-known value, not what the slip would have been placed at.
+    const marketOffered = liveContext?.marketAvailable !== false;
 
     legSnapshots.push({
       ideaId: idea.id,
@@ -64,8 +67,8 @@ export async function finalizeCandidate(
       selection: idea.selection,
       lineAtCapture: idea.lineAtCapture,
       oddsAtCaptureAmerican: idea.oddsAtCaptureAmerican,
-      lineAtFinalize: liveContext?.currentLine ?? null,
-      oddsAtFinalizeAmerican: liveContext?.currentOddsAmerican ?? null,
+      lineAtFinalize: marketOffered ? (liveContext?.currentLine ?? null) : null,
+      oddsAtFinalizeAmerican: marketOffered ? (liveContext?.currentOddsAmerican ?? null) : null,
       sportsbookAtCapture: idea.sportsbookAtCapture,
     });
 
@@ -76,6 +79,7 @@ export async function finalizeCandidate(
       captureOddsAmerican: idea.oddsAtCaptureAmerican,
       captureSportsbook: idea.sportsbookAtCapture,
       slipSportsbook: candidate.sportsbook,
+      marketAvailable: liveContext?.marketAvailable ?? null,
     });
   }
 

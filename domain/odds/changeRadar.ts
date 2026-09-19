@@ -29,18 +29,33 @@ export function buildChangeRadar(idea: CapturedIdea, liveContext: LiveContext | 
 
   const liveBook = liveContext.sportsbookLabel ?? liveContext.sportsbook;
 
-  if (liveContext.marketAvailable === false) {
+  // Odds age comes from oddsFetchedAt only. fetchedAt is "whichever provider
+  // wrote last" and the player-status refresh overwrites it with the Sleeper
+  // snapshot's own time, so it says nothing reliable about the price.
+  const oddsAge = minutesAgo(liveContext.oddsFetchedAt);
+
+  // A market the book no longer offers has no current line or price. Whatever is
+  // still stored is last-known, so it is shown as such and never compared with
+  // the capture values as if it were "Now".
+  const marketGone = liveContext.marketAvailable === false;
+  if (marketGone) {
+    const lastSeen =
+      liveContext.currentOddsAmerican !== null
+        ? ` Last price seen: ${formatAmerican(liveContext.currentOddsAmerican)}${oddsAge !== null ? ` (${oddsAge} min ago)` : ""}.`
+        : "";
     entries.push({
       kind: "not_found",
-      text: `Market no longer offered by ${liveBook}.`,
+      text: `Market no longer offered by ${liveBook}.${lastSeen}`,
     });
   }
 
   const lineChanged =
+    !marketGone &&
     idea.lineAtCapture !== null &&
     liveContext.currentLine !== null &&
     idea.lineAtCapture !== liveContext.currentLine;
   const oddsChanged =
+    !marketGone &&
     idea.oddsAtCaptureAmerican !== null &&
     liveContext.currentOddsAmerican !== null &&
     idea.oddsAtCaptureAmerican !== liveContext.currentOddsAmerican;
@@ -103,10 +118,6 @@ export function buildChangeRadar(idea: CapturedIdea, liveContext: LiveContext | 
     entries.push({ kind: "game_change", text: `Game status: ${liveContext.gameStatus}` });
   }
 
-  // Odds age comes from oddsFetchedAt only. fetchedAt is "whichever provider
-  // wrote last" and the player-status refresh overwrites it with the Sleeper
-  // snapshot's own time, so it says nothing reliable about the price.
-  const oddsAge = minutesAgo(liveContext.oddsFetchedAt);
   if (oddsAge === null) {
     entries.push({ kind: "not_found", text: "No odds fetched yet for this leg." });
   } else if (oddsAge > STALE_MINUTES) {

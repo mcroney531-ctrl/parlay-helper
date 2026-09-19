@@ -105,6 +105,7 @@ export default function BuilderPage() {
       captureOddsAmerican: leg.oddsAtCaptureAmerican,
       captureSportsbook: leg.sportsbookAtCapture,
       slipSportsbook: sportsbook,
+      marketAvailable: liveContextFor(leg.id)?.marketAvailable ?? null,
     })),
   );
 

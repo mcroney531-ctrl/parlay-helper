@@ -51,6 +51,12 @@ export function EstimatePanel({
         <p className="mt-2 text-xs font-medium" style={{ color: "var(--color-danger)" }}>
           Estimate cannot be calculated — {estimate.unavailableLegIds.length} leg(s) have no capture or current
           price.
+          {(() => {
+            const notOffered = estimate.legSources.filter((l) => l.unavailableReason === "market_not_offered").length;
+            return notOffered > 0
+              ? ` ${notOffered} of those ${notOffered === 1 ? "is" : "are"} no longer offered by this sportsbook.`
+              : "";
+          })()}
         </p>
       )}
       {!estimate.ok && estimate.reason === "no_legs" && (

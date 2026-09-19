@@ -12,6 +12,13 @@ export type LegPriceInput = {
   captureSportsbook?: string | null;
   /** The sportsbook of the slip this estimate is for. Missing or blank means unknown. */
   slipSportsbook?: string | null;
+  /**
+   * The live context's marketAvailable. false means this slip's book no longer
+   * offers the market (or the leg couldn't be found in its response), so
+   * whatever currentOddsAmerican is still stored is a last-known value, not a
+   * price that can be bet. null / undefined mean unknown and change nothing.
+   */
+  marketAvailable?: boolean | null;
 };
 
 export type ResolvedLegPrice = {
@@ -19,6 +26,10 @@ export type ResolvedLegPrice = {
   eventId: string | null;
   oddsAmerican: number | null;
   source: LegPriceSource;
+  /** Only when source is "unavailable" because the slip's book no longer offers the market. */
+  unavailableReason?: "market_not_offered";
+  /** With unavailableReason: the last stored live price, for display only. Never used in an estimate or a snapshot. */
+  lastKnownOddsAmerican?: number | null;
   /**
    * Only when source is "capture": the book the price was observed at and
    * whether it is the slip's book. A "current" price is always the slip's
@@ -37,6 +48,19 @@ export type ResolvedLegPrice = {
  * product question), but it is never presented as the slip book's price.
  */
 export function resolveLegPrice(leg: LegPriceInput): ResolvedLegPrice {
+  // A market the slip's book no longer offers has no price to bet at that book.
+  // Neither the retained live price nor the capture price (possibly from another
+  // book) stands in for it; the last-known live price is kept for display only.
+  if (leg.marketAvailable === false) {
+    return {
+      ideaId: leg.ideaId,
+      eventId: leg.eventId,
+      oddsAmerican: null,
+      source: "unavailable",
+      unavailableReason: "market_not_offered",
+      lastKnownOddsAmerican: leg.currentOddsAmerican,
+    };
+  }
   if (leg.currentOddsAmerican !== null) {
     return { ideaId: leg.ideaId, eventId: leg.eventId, oddsAmerican: leg.currentOddsAmerican, source: "current" };
   }
