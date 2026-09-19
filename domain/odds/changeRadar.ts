@@ -47,34 +47,48 @@ export function buildChangeRadar(idea: CapturedIdea, liveContext: LiveContext | 
 
   // The captured line and odds were observed at idea.sportsbookAtCapture; the
   // live values are for the slip's book. Only a same-book difference is a
-  // "change since capture". Across books, or when the capture book was never
-  // recorded, the values are shown with their books and not called a change.
+  // "change since capture", and "different books" is only claimed when both
+  // books are recognized. Otherwise (capture book unrecorded, or free text we
+  // can't place) an ODDS difference is hedged, because prices vary by book,
+  // while a LINE difference stays an ordinary change: the line is the user's
+  // own proposition, not a price claim, so it is never muted.
   const captureBook = compareSportsbooks(idea.sportsbookAtCapture, liveContext.sportsbook);
   const captureBookText = idea.sportsbookAtCapture?.trim() ?? "";
+  const selectionLabel = formatSelection(idea.selection);
+  const value = (line: number | null, odds: number | null) => describeValue(selectionLabel, line, odds);
 
   if (lineChanged || oddsChanged) {
-    const selectionLabel = formatSelection(idea.selection);
-    const captureLine = idea.lineAtCapture !== null ? ` ${idea.lineAtCapture}` : "";
-    const captureOdds = formatAmerican(idea.oddsAtCaptureAmerican);
-    const currentLine = liveContext.currentLine !== null ? ` ${liveContext.currentLine}` : "";
-    const currentOdds = formatAmerican(liveContext.currentOddsAmerican);
-    const captured = `${selectionLabel}${captureLine} (${captureOdds})`;
-    const now = `${selectionLabel}${currentLine} (${currentOdds})`;
     if (captureBook === "same") {
       entries.push({
         kind: lineChanged ? "line_change" : "odds_change",
-        text: `Captured: ${captured} · Now: ${now}`,
+        text: `Captured: ${value(idea.lineAtCapture, idea.oddsAtCaptureAmerican)} · Now: ${value(liveContext.currentLine, liveContext.currentOddsAmerican)}`,
       });
     } else if (captureBook === "different") {
       entries.push({
         kind: "cross_book",
-        text: `Captured at ${captureBookText}: ${captured} · Now at ${liveBook}: ${now} — different books, not a change since capture.`,
+        text: `Captured at ${captureBookText}: ${value(idea.lineAtCapture, idea.oddsAtCaptureAmerican)} · Now at ${liveBook}: ${value(liveContext.currentLine, liveContext.currentOddsAmerican)} — different books, not a change since capture.`,
       });
     } else {
-      entries.push({
-        kind: "cross_book",
-        text: `Captured (book not recorded): ${captured} · Now at ${liveBook}: ${now} — the capture book is unknown, so this may not be a change.`,
-      });
+      const recorded = captureBook === "unverified";
+      if (lineChanged) {
+        const qualifier = recorded
+          ? `captured at ${captureBookText}, this slip is ${liveBook}; not confirmed to be the same book`
+          : "capture book not recorded";
+        entries.push({
+          kind: "line_change",
+          text: `Captured: ${value(idea.lineAtCapture, null)} · Now: ${value(liveContext.currentLine, null)} (${qualifier})`,
+        });
+      }
+      if (oddsChanged) {
+        const captured = value(null, idea.oddsAtCaptureAmerican);
+        const now = value(null, liveContext.currentOddsAmerican);
+        entries.push({
+          kind: "cross_book",
+          text: recorded
+            ? `Odds captured at ${captureBookText}: ${captured} · Now at ${liveBook}: ${now} — not confirmed to be the same book, so this may not be a change since capture.`
+            : `Odds captured (book not recorded): ${captured} · Now at ${liveBook}: ${now} — the capture book is unknown, so this may not be a change.`,
+        });
+      }
     }
   }
 
@@ -110,6 +124,8 @@ export function buildChangeRadar(idea: CapturedIdea, liveContext: LiveContext | 
     let text = `No change since capture. Checked ${oddsAge} min ago.`;
     if (compared && captureBook === "different") {
       text = `Matches the capture values, but they were captured at ${captureBookText} and this is ${liveBook}. Checked ${oddsAge} min ago.`;
+    } else if (compared && captureBook === "unverified") {
+      text = `Matches the capture values, but ${captureBookText} isn't confirmed to be ${liveBook}. Checked ${oddsAge} min ago.`;
     } else if (compared && captureBook === "unknown") {
       text = `Matches the capture values, but the capture book was not recorded. Checked ${oddsAge} min ago.`;
     }
@@ -122,6 +138,11 @@ export function buildChangeRadar(idea: CapturedIdea, liveContext: LiveContext | 
 function formatAmerican(value: number | null): string {
   if (value === null) return "—";
   return value > 0 ? `+${value}` : `${value}`;
+}
+
+/** "Over 250.5 (-110)", leaving out whichever of line / odds is absent instead of printing an empty "(—)". */
+function describeValue(selection: string, line: number | null, odds: number | null): string {
+  return `${selection}${line !== null ? ` ${line}` : ""}${odds !== null ? ` (${formatAmerican(odds)})` : ""}`.trim();
 }
 
 function formatSelection(selection: string | null): string {

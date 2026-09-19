@@ -6,7 +6,7 @@ import type { IDBPDatabase } from "idb";
 
 /** Single source of truth for the (ideaId, sportsbook) composite key shape used by callers that key their own lookup maps. */
 export function liveContextKey(ideaId: string, sportsbook: string): string {
-  return `${ideaId}::${canonicalSportsbookId(sportsbook) ?? ""}`;
+  return `${ideaId}::${storeBook(sportsbook)}`;
 }
 
 /** The book half of the IDB key: canonical, or the raw text only when it has no letters or digits at all. */
@@ -53,7 +53,13 @@ async function rekeyLegacyRows(db: IDBPDatabase<ParlayHelperDB>): Promise<void> 
     for (const row of group) {
       if (isNewer(row, winner) || (!isNewer(winner, row) && row.sportsbook === canonical)) winner = row;
     }
-    const label = winner.sportsbookLabel ?? group.find((row) => row.sportsbook !== canonical)?.sportsbook;
+    // The winner's own typed text first; a losing row's text only when the winner has none
+    // (a row that was already canonical), so the label never contradicts the row that won.
+    const label =
+      winner.sportsbookLabel ??
+      (winner.sportsbook !== canonical ? winner.sportsbook : undefined) ??
+      group.find((row) => row.sportsbookLabel)?.sportsbookLabel ??
+      group.find((row) => row.sportsbook !== canonical)?.sportsbook;
 
     for (const row of group) await store.delete([row.ideaId, row.sportsbook]);
     await store.put({ ...winner, sportsbook: canonical, ...(label ? { sportsbookLabel: label } : {}) });
@@ -67,9 +73,10 @@ async function readyDB(): Promise<IDBPDatabase<ParlayHelperDB>> {
   const db = await getDB();
   let pending = rekeyed.get(db);
   if (!pending) {
+    // Rekeying is cache maintenance: if it fails, reads and writes must still work.
+    // Legacy rows are simply not found until the next connection retries it.
     pending = rekeyLegacyRows(db).catch((error) => {
-      rekeyed.delete(db);
-      throw error;
+      console.warn("Could not rekey legacy live-context rows; continuing without.", error);
     });
     rekeyed.set(db, pending);
   }

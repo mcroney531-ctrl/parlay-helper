@@ -68,7 +68,7 @@ export function EstimatePanel({
               (l) => l.source === "capture" && l.captureBook?.match !== "same",
             ).length;
             return otherBook > 0
-              ? ` ${otherBook} of those ${otherBook === 1 ? "was" : "were"} captured at a different or unrecorded sportsbook.`
+              ? ` ${otherBook} of those ${otherBook === 1 ? "was" : "were"} captured at a sportsbook that is unrecorded or not confirmed to match this slip's.`
               : "";
           })()}
         </p>

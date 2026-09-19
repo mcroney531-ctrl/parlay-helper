@@ -1,7 +1,7 @@
 "use client";
 
 import type { CapturedIdea, LiveContext } from "@/domain/types";
-import { buildChangeRadar } from "@/domain/odds/changeRadar";
+import { buildChangeRadar, type ChangeRadarEntry } from "@/domain/odds/changeRadar";
 import { PlayerAvatar } from "@/components/PlayerAvatar";
 import { sleeperHeadshotUrl } from "@/components/sleeperImage";
 import { Pill } from "@/components/StatusChip";
@@ -9,10 +9,12 @@ import { AlertCircleIcon } from "@/components/icons";
 import { teamColorsFor } from "@/components/teamColors";
 import { Button } from "@/components/FormControls";
 
-const RADAR_TONE: Record<string, string> = {
+// Keyed by the entry kind so a new kind without a tone is a compile error, not a silent grey line.
+const RADAR_TONE: Record<ChangeRadarEntry["kind"], string> = {
   ok: "var(--color-muted)",
   line_change: "var(--color-info)",
   odds_change: "var(--color-info)",
+  cross_book: "var(--color-info)",
   status_change: "var(--color-caution-fg)",
   game_change: "var(--color-caution-fg)",
   stale: "var(--color-caution-fg)",
@@ -72,7 +74,7 @@ export function PropLegCard({
               <li
                 key={i}
                 className="flex items-start gap-1.5 text-sm font-medium"
-                style={{ color: RADAR_TONE[entry.kind] ?? "var(--color-muted)" }}
+                style={{ color: RADAR_TONE[entry.kind] }}
               >
                 {entry.kind === "not_found" && <AlertCircleIcon className="mt-0.5 h-4 w-4 shrink-0" />}
                 <span>{entry.text}</span>
