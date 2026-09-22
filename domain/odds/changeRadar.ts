@@ -45,7 +45,7 @@ export function buildChangeRadar(idea: CapturedIdea, liveContext: LiveContext | 
         : "";
     entries.push({
       kind: "not_found",
-      text: `Market no longer offered by ${liveBook}.${lastSeen}`,
+      text: `Market not currently offered by ${liveBook}.${lastSeen}`,
     });
   }
 

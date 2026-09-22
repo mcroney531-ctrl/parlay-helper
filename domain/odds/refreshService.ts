@@ -261,18 +261,30 @@ export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas:
       }
       const outcome = matchOutcome(idea, result.outcomes);
       if (outcome === null) event.unmatchedIdeaIds.push(ideaId);
+      // A bare unmatched outcome conflates four different situations. Only "the
+      // market key isn't in this response at all" is positive evidence the book
+      // doesn't list it (false); a listed market the matcher couldn't attach to
+      // this leg (no player name, player not in the market, or an ambiguous
+      // selection/line) is a matcher limitation, not evidence of absence, so it
+      // stays unknown (null) rather than false.
+      const listed = result.outcomes.some((o) => o.marketKey === idea.marketKey);
       await mergeLiveContext(ideaId, candidate.sportsbook, {
         eventId: idea.eventId,
         currentLine: outcome?.point ?? null,
         currentOddsAmerican: outcome?.priceAmerican ?? null,
-        marketAvailable: outcome !== null,
+        marketAvailable: outcome !== null ? true : listed ? null : false,
         oddsFetchedAt: result.fetchedAt,
         oddsSource: "odds-api",
         fetchedAt: result.fetchedAt,
         source: "odds-api",
         warnings:
           outcome === null
-            ? [...warnings, "Could not confirm which outcome belongs to this leg (player/selection unclear or ambiguous)."]
+            ? [
+                ...warnings,
+                listed
+                  ? "Could not confirm which outcome belongs to this leg (player/selection unclear or ambiguous)."
+                  : "This sportsbook isn't listing this market for the game right now.",
+              ]
             : warnings,
       });
     }

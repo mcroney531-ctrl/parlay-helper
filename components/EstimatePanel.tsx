@@ -54,7 +54,7 @@ export function EstimatePanel({
           {(() => {
             const notOffered = estimate.legSources.filter((l) => l.unavailableReason === "market_not_offered").length;
             return notOffered > 0
-              ? ` ${notOffered} of those ${notOffered === 1 ? "is" : "are"} no longer offered by this sportsbook.`
+              ? ` ${notOffered} of those ${notOffered === 1 ? "is" : "are"} not currently offered by this sportsbook.`
               : "";
           })()}
         </p>

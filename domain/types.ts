@@ -43,6 +43,14 @@ export type LiveContext = {
   eventId: string | null;
   currentLine: number | null;
   currentOddsAmerican: number | null;
+  /**
+   * true: matched to an outcome. false: the provider positively reported the
+   * book doesn't list it (a 404, or a good response with no outcome for this
+   * market key). null: unknown — never fetched, a failed attempt, or fetched
+   * but this leg couldn't be identified in a market that IS listed (matcher
+   * limits: no player name, player not in the market, or an ambiguous
+   * selection/line).
+   */
   marketAvailable: boolean | null;
   playerStatus: string | null;
   depthChartPosition: string | null;
