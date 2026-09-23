@@ -3,8 +3,6 @@
 import Link from "next/link";
 import { useData } from "@/app/DataProvider";
 import { ChevronRightIcon } from "@/components/icons";
-import { calculateCombinedEstimate, legPriceInputs } from "@/domain/odds/estimate";
-import { liveContextKey } from "@/storage/indexeddb/repositories/liveContextRepository";
 
 /**
  * Persistent one-tap link to the current slip, shown on Capture and Ideas
@@ -12,7 +10,7 @@ import { liveContextKey } from "@/storage/indexeddb/repositories/liveContextRepo
  * candidate lives — it's surfaced everywhere that feeds it.
  */
 export function CurrentSlipTray() {
-  const { activeCandidate, candidates, ideas, liveContextByKey, loading } = useData();
+  const { activeCandidate, candidates, loading } = useData();
 
   if (loading) return null;
 
@@ -30,14 +28,6 @@ export function CurrentSlipTray() {
     );
   }
 
-  // A count of legs without any price, resolved exactly as the Slip screen does.
-  // Only a count: this bar never shows odds or payout.
-  const book = activeCandidate.sportsbook;
-  const legs = activeCandidate.ideaIds.map((id) => ideas.find((idea) => idea.id === id)).filter((v) => v !== undefined);
-  const unpriced = calculateCombinedEstimate(
-    legPriceInputs(legs, book, (ideaId) => liveContextByKey[liveContextKey(ideaId, book)]),
-  ).legSources.filter((leg) => leg.source === "unavailable").length;
-
   return (
     <Link
       href="/builder"
@@ -46,7 +36,6 @@ export function CurrentSlipTray() {
     >
       <span className="truncate">
         {activeCandidate.name} · {activeCandidate.ideaIds.length} leg{activeCandidate.ideaIds.length === 1 ? "" : "s"}
-        {unpriced > 0 ? ` · ${unpriced} without a price` : ""}
       </span>
       <span className="flex shrink-0 items-center gap-1">
         View slip

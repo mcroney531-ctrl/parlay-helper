@@ -132,7 +132,8 @@ export function buildChangeRadar(
     // A stored price with no fetch time predates oddsFetchedAt: its age is
     // unknown, which is not the same as never having been fetched.
     if (liveContext.currentOddsAmerican !== null) {
-      entries.push({ kind: "stale", text: "Odds age unknown — refresh to update." });
+      // Only suggest a refresh when one could actually fetch a price for this leg.
+      entries.push({ kind: "stale", text: priceBlocked ? "Odds age unknown." : "Odds age unknown — refresh to update." });
     } else if (!priceBlocked) {
       entries.push({ kind: "not_found", text: "No odds fetched yet for this leg." });
     }

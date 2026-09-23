@@ -23,7 +23,7 @@ import { SportsbookSupportHint } from "@/components/SportsbookSupportHint";
 import { detectCorrelationSignals } from "@/domain/rules/correlation";
 import { detectConcentrationSignals } from "@/domain/rules/concentration";
 import { createCandidate, removeLegFromCandidate } from "@/domain/candidates/candidateService";
-import { describeRefreshProblem, refreshCandidateContext } from "@/domain/odds/refreshService";
+import { describeRefreshNotice, describeRefreshProblem, refreshCandidateContext } from "@/domain/odds/refreshService";
 import { liveContextKey } from "@/storage/indexeddb/repositories/liveContextRepository";
 
 function kickoffWindowFor(scheduledStart: string | null): string | null {
@@ -92,6 +92,7 @@ export default function BuilderPage() {
   const [expanded, setExpanded] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
   const [addingIdeas, setAddingIdeas] = useState(false);
 
   const candidate = candidates.find((c) => c.id === activeCandidateId) ?? null;
@@ -135,10 +136,12 @@ export default function BuilderPage() {
     if (!candidate || refreshing) return;
     setRefreshing(true);
     setRefreshError(null);
+    setRefreshNotice(null);
     try {
       const result = await refreshCandidateContext(candidate, ideas);
       await refreshLiveContext();
       setRefreshError(describeRefreshProblem(result));
+      setRefreshNotice(describeRefreshNotice(result));
     } catch (err) {
       setRefreshError(err instanceof Error ? err.message : "Could not refresh odds/status.");
     } finally {
@@ -182,6 +185,10 @@ export default function BuilderPage() {
               {refreshError}
             </p>
           )}
+          {/* Always mounted so screen readers announce the note politely when it appears. */}
+          <p role="status" className="text-xs empty:hidden" style={{ color: "var(--color-muted)" }}>
+            {refreshNotice}
+          </p>
 
           {legs.length === 0 ? (
             <div className="flex flex-col items-center gap-4 rounded-[var(--radius-card)] border px-4 py-10 text-center" style={{ borderColor: "var(--color-border)" }}>

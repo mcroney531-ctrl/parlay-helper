@@ -387,9 +387,8 @@ function describeFailure(source: string, failure: RefreshRequestFailure): string
 /**
  * One line for the refresh error slot, or null when there's nothing the user
  * needs told beyond the per-leg warnings that are already stored and rendered
- * (not_configured, plain success). Legs skipped for missing details are always
- * mentioned: they get no stored warning, so otherwise a refresh that sent
- * nothing would look like it did nothing at all.
+ * (not_configured, nothing_to_refresh, plain success). Only real failures go
+ * here; legs skipped for missing details are describeRefreshNotice's.
  */
 export function describeRefreshProblem(result: CandidateRefreshResult): string | null {
   const messages: string[] = [];
@@ -404,14 +403,24 @@ export function describeRefreshProblem(result: CandidateRefreshResult): string |
       `Odds refreshed for ${fetched} of ${odds.events.length} games; the rest kept their last prices (see leg warnings).`,
     );
   }
-  const unrefreshable = odds.skippedIdeaIds.length - odds.missingIdeaIds.length;
-  if (odds.status === "nothing_to_refresh" && unrefreshable > 0) {
-    messages.push("No odds to refresh: every leg still needs a league, game and market in its details.");
-  } else if (unrefreshable > 0) {
-    messages.push(
-      `${unrefreshable} leg${unrefreshable === 1 ? " was" : "s were"} skipped: ${unrefreshable === 1 ? "it needs" : "they need"} a league, game and market in the idea's details.`,
-    );
-  }
   if (playerStatus.failure) messages.push(describeFailure("player status", playerStatus.failure));
   return messages.length > 0 ? messages.join(" ") : null;
+}
+
+/**
+ * A neutral note about legs the refresh didn't send because their ideas lack
+ * a league, game or market, or null when there were none. This is a fact about
+ * the slip (raw legs are allowed), not a failed refresh, so it is kept out of
+ * describeRefreshProblem and must not be shown as an error. Without it a
+ * refresh that sent nothing would look like it did nothing at all. Legs whose
+ * idea was deleted are not counted: they aren't missing details.
+ */
+export function describeRefreshNotice(result: CandidateRefreshResult): string | null {
+  const { odds } = result;
+  const unrefreshable = odds.skippedIdeaIds.length - odds.missingIdeaIds.length;
+  if (unrefreshable <= 0) return null;
+  if (odds.status === "nothing_to_refresh") {
+    return "No odds to refresh: every leg still needs a league, game and market in its details.";
+  }
+  return `${unrefreshable} leg${unrefreshable === 1 ? " was" : "s were"} skipped: ${unrefreshable === 1 ? "it needs" : "they need"} a league, game and market in the idea's details.`;
 }
