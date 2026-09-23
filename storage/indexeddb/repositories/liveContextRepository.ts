@@ -112,3 +112,12 @@ export async function getAllLiveContext(): Promise<LiveContext[]> {
   const db = await readyDB();
   return db.getAll(STORES.liveContext);
 }
+
+/** Removes every book's row for one idea, in one transaction. */
+export async function deleteLiveContextForIdea(ideaId: string): Promise<void> {
+  const db = await readyDB();
+  const tx = db.transaction(STORES.liveContext, "readwrite");
+  const keys = await tx.store.index("by-ideaId").getAllKeys(ideaId);
+  for (const key of keys) await tx.store.delete(key);
+  await tx.done;
+}

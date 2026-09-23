@@ -5,6 +5,7 @@ import {
   getIdea,
   putIdea,
 } from "@/storage/indexeddb/repositories/ideasRepository";
+import { deleteLiveContextForIdea } from "@/storage/indexeddb/repositories/liveContextRepository";
 import { parseRawText } from "./parseRawText";
 
 function newId(): string {
@@ -112,6 +113,42 @@ function isStructuredEnough(idea: CapturedIdea): boolean {
   return Boolean(idea.marketKey && idea.selection);
 }
 
+/**
+ * The fields a cached live price depends on. league, eventId and marketKey are
+ * what the odds request asks for; playerName, selection and lineAtCapture are
+ * what matchOutcome uses to pick this leg's outcome; playerId is what the
+ * player-status half of the same row was fetched for. Changing any of them
+ * means the row describes a different proposition. Everything else (confidence,
+ * note, team/opponent, marketLabel, and the capture odds/book, which the
+ * resolver reads from the idea itself) never reaches the cache.
+ */
+const PRICE_IDENTITY_FIELDS = [
+  "league",
+  "eventId",
+  "marketKey",
+  "playerId",
+  "playerName",
+  "selection",
+  "lineAtCapture",
+] as const;
+
+/** matchOutcome compares playerName and selection case-insensitively, so a case-only edit still prices the same outcome. */
+function identityValue(idea: CapturedIdea, field: (typeof PRICE_IDENTITY_FIELDS)[number]): unknown {
+  const value = idea[field];
+  if ((field === "playerName" || field === "selection") && typeof value === "string") {
+    return value.trim().toLowerCase();
+  }
+  return value;
+}
+
+/**
+ * The one definition of "same proposition" for cached live prices. Exported so
+ * the Phase 2 stale-response guard on refresh writes uses this, not a copy.
+ */
+export function changesPriceIdentity(before: CapturedIdea, after: CapturedIdea): boolean {
+  return PRICE_IDENTITY_FIELDS.some((field) => identityValue(before, field) !== identityValue(after, field));
+}
+
 export async function updateIdeaDetails(
   id: string,
   patch: Partial<Omit<CapturedIdea, "id" | "rawText" | "createdAt">>,
@@ -129,6 +166,9 @@ export async function updateIdeaDetails(
     updatedAt: nowISO(),
   };
   merged.detailsStatus = isStructuredEnough(merged) ? "structured" : "needs_details";
+  // Cleared before the idea is saved: if the save then fails, all that's lost
+  // is a disposable cache, never a stale price left on the edited idea.
+  if (changesPriceIdentity(existing, merged)) await deleteLiveContextForIdea(id);
   await putIdea(merged);
   return merged;
 }

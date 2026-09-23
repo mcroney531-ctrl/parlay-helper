@@ -22,7 +22,7 @@ import { useData } from "@/app/DataProvider";
  * slip, instead of exposing a candidate-picker on every card.
  */
 export function IdeaCard({ idea, variant }: { idea: CapturedIdea; variant: "compact" | "full" }) {
-  const { refreshIdeas, refreshCandidates, candidates, activeCandidate, activeCandidateId } = useData();
+  const { refreshIdeas, refreshCandidates, refreshLiveContext, candidates, activeCandidate, activeCandidateId } = useData();
   const [editing, setEditing] = useState(false);
   const [addingToOther, setAddingToOther] = useState(false);
   const [otherCandidateId, setOtherCandidateId] = useState("");
@@ -33,13 +33,13 @@ export function IdeaCard({ idea, variant }: { idea: CapturedIdea; variant: "comp
 
   async function saveDetails(values: StructuredFormValues) {
     await updateIdeaDetails(idea.id, valuesToPatch(values));
-    await refreshIdeas();
+    await Promise.all([refreshIdeas(), refreshLiveContext()]);
     setEditing(false);
   }
 
   async function saveDetailsAndAddToSlip(values: StructuredFormValues) {
     await updateIdeaDetails(idea.id, valuesToPatch(values));
-    await refreshIdeas();
+    await Promise.all([refreshIdeas(), refreshLiveContext()]);
     if (activeCandidateId) await addLegToCandidate(activeCandidateId, idea.id);
     await refreshCandidates();
     setEditing(false);
