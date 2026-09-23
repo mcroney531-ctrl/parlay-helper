@@ -5,6 +5,7 @@ import { resolveLegPrice } from "@/domain/odds/estimate";
 import { __setDBForTests } from "@/storage/indexeddb/db";
 import { getAllLiveContext, getLiveContext, putLiveContext } from "@/storage/indexeddb/repositories/liveContextRepository";
 import type { CapturedIdea, LiveContext } from "@/domain/types";
+import { valuesFromIdea, valuesToPatch } from "@/components/StructuredDetailsForm";
 
 beforeEach(() => {
   (globalThis as unknown as { indexedDB: IDBFactory }).indexedDB = new IDBFactory();
@@ -148,5 +149,20 @@ describe("updateIdeaDetails: an edit that doesn't change what is priced", () => 
 
     expect(await snapshot()).toBe(before);
     expect(await getAllLiveContext()).toHaveLength(3);
+  });
+});
+
+describe("re-saving the details form unchanged", () => {
+  it("keeps the live context even when the line field held non-numeric text", async () => {
+    const { x } = await seed();
+    const values = { ...valuesFromIdea((await getIdea(x.id)) as CapturedIdea), lineAtCapture: "abc" };
+    await updateIdeaDetails(x.id, valuesToPatch(values));
+    await putLiveContext(makeContext({ ideaId: x.id, sportsbook: "FanDuel" }));
+    const before = await snapshot();
+
+    // Saving the very same form again is not an identity change.
+    await updateIdeaDetails(x.id, valuesToPatch(values));
+
+    expect(await snapshot()).toBe(before);
   });
 });

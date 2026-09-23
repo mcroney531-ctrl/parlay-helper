@@ -43,6 +43,13 @@ export function valuesFromIdea(idea: CapturedIdea): StructuredFormValues {
   };
 }
 
+/** A number, or null for blank or non-numeric text: never NaN or Infinity, which would compare unequal to itself. */
+function finiteOrNull(text: string): number | null {
+  if (!text.trim()) return null;
+  const value = Number(text);
+  return Number.isFinite(value) ? value : null;
+}
+
 export function valuesToPatch(values: StructuredFormValues): Partial<CapturedIdea> {
   return {
     sport: values.sport.trim() || null,
@@ -56,8 +63,8 @@ export function valuesToPatch(values: StructuredFormValues): Partial<CapturedIde
     marketKey: values.marketKey.trim() || null,
     marketLabel: values.marketLabel.trim() || null,
     selection: values.selection.trim() || null,
-    lineAtCapture: values.lineAtCapture.trim() ? Number(values.lineAtCapture) : null,
-    oddsAtCaptureAmerican: values.oddsAtCaptureAmerican.trim() ? Number(values.oddsAtCaptureAmerican) : null,
+    lineAtCapture: finiteOrNull(values.lineAtCapture),
+    oddsAtCaptureAmerican: finiteOrNull(values.oddsAtCaptureAmerican),
     sportsbookAtCapture: values.sportsbookAtCapture.trim() || null,
     confidence: values.confidence,
     note: values.note,

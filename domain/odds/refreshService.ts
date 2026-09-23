@@ -126,7 +126,9 @@ export function matchOutcome(idea: CapturedIdea, outcomes: OddsApiOutcome[]): Od
   }
 
   if (idea.selection) {
-    const bySelection = candidates.find((o) => o.name.toLowerCase() === idea.selection?.toLowerCase());
+    // Same normalization as changesPriceIdentity, so an edit it calls cosmetic can't change the match.
+    const selection = normalizeName(idea.selection);
+    const bySelection = candidates.find((o) => normalizeName(o.name) === selection);
     if (bySelection) return bySelection;
   }
   if (idea.lineAtCapture !== null) {
