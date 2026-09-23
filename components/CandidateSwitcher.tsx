@@ -6,6 +6,7 @@ import { cloneCandidate, createCandidate, deleteCandidate, renameCandidate } fro
 import { useData } from "@/app/DataProvider";
 import { Button, TextInput } from "@/components/FormControls";
 import { PlusIcon } from "@/components/icons";
+import { SportsbookSupportHint } from "@/components/SportsbookSupportHint";
 
 export function CandidateSwitcher({
   activeId,
@@ -181,6 +182,9 @@ export function CandidateSwitcher({
             <TextInput value={sportsbook} onChange={(e) => setSportsbook(e.target.value)} placeholder="FanDuel" />
           </label>
           <Button type="submit">Create</Button>
+          <div className="basis-full">
+            <SportsbookSupportHint sportsbook={sportsbook} />
+          </div>
           <Button type="button" variant="secondary" onClick={() => setCreating(false)}>
             Cancel
           </Button>

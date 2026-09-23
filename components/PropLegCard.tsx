@@ -2,6 +2,7 @@
 
 import type { CapturedIdea, LiveContext } from "@/domain/types";
 import { buildChangeRadar, type ChangeRadarEntry } from "@/domain/odds/changeRadar";
+import { describePriceBlockers, priceBlockers } from "@/domain/odds/refreshability";
 import { PlayerAvatar } from "@/components/PlayerAvatar";
 import { sleeperHeadshotUrl } from "@/components/sleeperImage";
 import { Pill } from "@/components/StatusChip";
@@ -24,13 +25,17 @@ const RADAR_TONE: Record<ChangeRadarEntry["kind"], string> = {
 export function PropLegCard({
   idea,
   liveContext,
+  slipSportsbook,
   onRemove,
 }: {
   idea: CapturedIdea;
   liveContext: LiveContext | undefined;
+  slipSportsbook: string;
   onRemove: () => void;
 }) {
-  const radar = buildChangeRadar(idea, liveContext);
+  const blockers = priceBlockers(idea, slipSportsbook);
+  const blockedText = describePriceBlockers(blockers, slipSportsbook);
+  const radar = buildChangeRadar(idea, liveContext, blockers.length > 0);
   const marketLine = [idea.marketLabel, idea.selection].filter((v) => v !== null && v !== undefined && v !== "").join(" · ");
   const colors = teamColorsFor(idea.team);
 
@@ -70,6 +75,12 @@ export function PropLegCard({
           )}
 
           <ul className="mt-1 flex flex-col gap-0.5">
+            {blockedText && (
+              <li className="flex items-start gap-1.5 text-sm font-medium" style={{ color: "var(--color-missing-fg)" }}>
+                <AlertCircleIcon className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{blockedText}</span>
+              </li>
+            )}
             {radar.map((entry, i) => (
               <li
                 key={i}

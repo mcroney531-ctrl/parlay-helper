@@ -1,5 +1,6 @@
 import { americanToDecimal, decimalToAmerican, roundAmerican } from "./conversion";
 import { compareSportsbooks, type SportsbookMatch } from "@/domain/sportsbook";
+import type { CapturedIdea, LiveContext } from "@/domain/types";
 
 export type LegPriceSource = "current" | "capture" | "unavailable";
 
@@ -77,6 +78,26 @@ export function resolveLegPrice(leg: LegPriceInput): ResolvedLegPrice {
     };
   }
   return { ideaId: leg.ideaId, eventId: leg.eventId, oddsAmerican: null, source: "unavailable" };
+}
+
+/** The resolver input for each leg of a slip, so every screen that counts prices resolves them the same way. */
+export function legPriceInputs(
+  legs: CapturedIdea[],
+  slipSportsbook: string,
+  liveContextFor: (ideaId: string) => LiveContext | undefined,
+): LegPriceInput[] {
+  return legs.map((leg) => {
+    const live = liveContextFor(leg.id);
+    return {
+      ideaId: leg.id,
+      eventId: leg.eventId,
+      currentOddsAmerican: live?.currentOddsAmerican ?? null,
+      captureOddsAmerican: leg.oddsAtCaptureAmerican,
+      captureSportsbook: leg.sportsbookAtCapture,
+      slipSportsbook,
+      marketAvailable: live?.marketAvailable ?? null,
+    };
+  });
 }
 
 export type CombinedEstimate =

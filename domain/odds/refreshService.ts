@@ -1,5 +1,6 @@
 import type { CandidateParlay, CapturedIdea, LiveContext } from "@/domain/types";
 import { getLiveContext, putLiveContext } from "@/storage/indexeddb/repositories/liveContextRepository";
+import { missingOddsRequestFields } from "./refreshability";
 
 type OddsApiOutcome = {
   marketKey: string;
@@ -53,6 +54,8 @@ export type OddsRefreshResult = {
   events: OddsEventOutcome[];
   /** Candidate legs that were not sent to the provider (unrefreshable or missing ideas). */
   skippedIdeaIds: string[];
+  /** The subset of skippedIdeaIds whose idea no longer exists. */
+  missingIdeaIds: string[];
 };
 
 export type PlayerStatusRefreshResult = {
@@ -185,12 +188,13 @@ export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas:
   const attemptedAt = new Date().toISOString();
   const legs = candidate.ideaIds
     .map((id) => ideas.find((idea) => idea.id === id))
-    .filter((idea): idea is CapturedIdea => Boolean(idea && idea.eventId && idea.marketKey && idea.league));
+    .filter((idea): idea is CapturedIdea => Boolean(idea && missingOddsRequestFields(idea).length === 0));
   const sentIds = new Set(legs.map((leg) => leg.id));
   const skippedIdeaIds = candidate.ideaIds.filter((id) => !sentIds.has(id));
+  const missingIdeaIds = skippedIdeaIds.filter((id) => !ideas.some((idea) => idea.id === id));
 
   if (legs.length === 0) {
-    return { status: "nothing_to_refresh", attemptedAt, failure: null, events: [], skippedIdeaIds };
+    return { status: "nothing_to_refresh", attemptedAt, failure: null, events: [], skippedIdeaIds, missingIdeaIds };
   }
 
   const failed = (failure: RefreshRequestFailure): OddsRefreshResult => ({
@@ -199,6 +203,7 @@ export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas:
     failure,
     events: [],
     skippedIdeaIds,
+    missingIdeaIds,
   });
 
   let response: Response;
@@ -299,7 +304,7 @@ export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas:
         : fetched === events.length
           ? "ok"
           : "partial";
-  return { status, attemptedAt, failure: null, events, skippedIdeaIds };
+  return { status, attemptedAt, failure: null, events, skippedIdeaIds, missingIdeaIds };
 }
 
 export async function refreshPlayerStatusForCandidate(
@@ -382,7 +387,9 @@ function describeFailure(source: string, failure: RefreshRequestFailure): string
 /**
  * One line for the refresh error slot, or null when there's nothing the user
  * needs told beyond the per-leg warnings that are already stored and rendered
- * (not_configured, nothing_to_refresh, plain success).
+ * (not_configured, plain success). Legs skipped for missing details are always
+ * mentioned: they get no stored warning, so otherwise a refresh that sent
+ * nothing would look like it did nothing at all.
  */
 export function describeRefreshProblem(result: CandidateRefreshResult): string | null {
   const messages: string[] = [];
@@ -395,6 +402,14 @@ export function describeRefreshProblem(result: CandidateRefreshResult): string |
     const fetched = odds.events.filter((event) => event.priceRefreshed).length;
     messages.push(
       `Odds refreshed for ${fetched} of ${odds.events.length} games; the rest kept their last prices (see leg warnings).`,
+    );
+  }
+  const unrefreshable = odds.skippedIdeaIds.length - odds.missingIdeaIds.length;
+  if (odds.status === "nothing_to_refresh" && unrefreshable > 0) {
+    messages.push("No odds to refresh: every leg still needs a league, game and market in its details.");
+  } else if (unrefreshable > 0) {
+    messages.push(
+      `${unrefreshable} leg${unrefreshable === 1 ? " was" : "s were"} skipped: ${unrefreshable === 1 ? "it needs" : "they need"} a league, game and market in the idea's details.`,
     );
   }
   if (playerStatus.failure) messages.push(describeFailure("player status", playerStatus.failure));

@@ -19,10 +19,20 @@ function minutesAgo(iso: string | null): number | null {
  * Reads as "what changed", never "what to bet" — purely descriptive diffs
  * between the capture snapshot and the latest fetched context.
  */
-export function buildChangeRadar(idea: CapturedIdea, liveContext: LiveContext | undefined): ChangeRadarEntry[] {
+export function buildChangeRadar(
+  idea: CapturedIdea,
+  liveContext: LiveContext | undefined,
+  /**
+   * True when the leg can't get a live price at all (see priceBlockers). The
+   * caller shows why, so the radar drops its "not fetched yet" lines, which
+   * would suggest a refresh could fix it.
+   */
+  priceBlocked = false,
+): ChangeRadarEntry[] {
   const entries: ChangeRadarEntry[] = [];
 
   if (!liveContext) {
+    if (priceBlocked) return entries;
     entries.push({ kind: "not_found", text: "No current data fetched yet for this leg." });
     return entries;
   }
@@ -119,7 +129,13 @@ export function buildChangeRadar(idea: CapturedIdea, liveContext: LiveContext | 
   }
 
   if (oddsAge === null) {
-    entries.push({ kind: "not_found", text: "No odds fetched yet for this leg." });
+    // A stored price with no fetch time predates oddsFetchedAt: its age is
+    // unknown, which is not the same as never having been fetched.
+    if (liveContext.currentOddsAmerican !== null) {
+      entries.push({ kind: "stale", text: "Odds age unknown — refresh to update." });
+    } else if (!priceBlocked) {
+      entries.push({ kind: "not_found", text: "No odds fetched yet for this leg." });
+    }
   } else if (oddsAge > STALE_MINUTES) {
     entries.push({ kind: "stale", text: `Odds last checked ${oddsAge} min ago — may be stale.` });
   }

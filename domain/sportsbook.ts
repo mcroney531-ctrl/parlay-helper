@@ -19,6 +19,9 @@
  */
 const SUPPORTED_BOOK_IDS = ["fanduel", "draftkings", "betmgm", "caesars", "espnbet"] as const;
 
+/** Display names for the supported books, in SUPPORTED_BOOK_IDS order. */
+export const SUPPORTED_BOOK_NAMES = ["FanDuel", "DraftKings", "BetMGM", "Caesars", "ESPN BET"] as const;
+
 const SUPPORTED_BOOK_ALIASES: Record<string, (typeof SUPPORTED_BOOK_IDS)[number]> = {
   fd: "fanduel",
   dk: "draftkings",
