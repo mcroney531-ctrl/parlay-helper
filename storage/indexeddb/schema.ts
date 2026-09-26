@@ -2,7 +2,7 @@
 // whenever a store or index changes shape. Never mutate past steps.
 
 export const DB_NAME = "parlay-helper";
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export const STORES = {
   ideas: "ideas",

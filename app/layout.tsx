@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, League_Gothic } from "next/font/google";
 import "./globals.css";
 import { NavBar } from "@/components/NavBar";
+import { StorageErrorBanner } from "@/components/StorageErrorBanner";
 import { DataProvider } from "./DataProvider";
 import { ServiceWorkerRegistration } from "./ServiceWorkerRegistration";
 
@@ -46,6 +47,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-full flex flex-col" style={{ background: "var(--color-canvas)" }}>
         <ServiceWorkerRegistration />
         <DataProvider>
+          <StorageErrorBanner />
           <NavBar />
           <main className="mx-auto w-full flex-1 pb-nav-safe" style={{ maxWidth: "var(--content-max-width)" }}>
             {children}

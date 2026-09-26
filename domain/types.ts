@@ -69,6 +69,8 @@ export type LiveContext = {
   playerStatusSource: string | null;
 };
 
+export type CandidateStatus = "draft" | "placed";
+
 export type CandidateParlay = {
   id: string;
   name: string;
@@ -79,6 +81,19 @@ export type CandidateParlay = {
   promoMaxStakeCents: number | null;
   createdAt: string;
   updatedAt: string;
+  // The three fields below arrived with schema v3 and are optional for the
+  // same reason as FinalizedLegSnapshot.playerId: every candidate saved before
+  // v3 has no such keys, and the migration deliberately doesn't rewrite them.
+  // Read them through domain/candidates/candidateState, never directly.
+  /** Absent reads as "draft". Only ever moves draft -> placed. */
+  status?: CandidateStatus;
+  /** When the candidate was placed; equals its finalized record's finalizedAt. */
+  placedAt?: string;
+  /**
+   * Edit counter: the "version the user saw" that placement checks against.
+   * Absent reads as 0. Every edit to the candidate increments it.
+   */
+  revision?: number;
 };
 
 export type FinalizedLegSnapshot = {
@@ -103,6 +118,13 @@ export type FinalizedLegSnapshot = {
 
 export type FinalizedParlay = {
   id: string;
+  /**
+   * The candidate this record placed. Present and non-empty on every record
+   * written from schema v3 on; absent on older records, which are never
+   * linked after the fact (their candidate is not inferred). May name a
+   * candidate that has since been deleted.
+   */
+  candidateId?: string;
   candidateName: string;
   sportsbook: string;
   legSnapshots: FinalizedLegSnapshot[];

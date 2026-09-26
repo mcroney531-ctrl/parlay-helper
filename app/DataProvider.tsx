@@ -7,6 +7,7 @@ import { listCandidates } from "@/domain/candidates/candidateService";
 import { listFinalizedParlays } from "@/domain/history/finalizeService";
 import { getAllLiveContext, liveContextKey } from "@/storage/indexeddb/repositories/liveContextRepository";
 import { resolveActiveCandidateId } from "@/domain/candidates/activeCandidate";
+import { UPGRADE_BLOCKED_MESSAGE, subscribeToDatabaseNotices } from "@/storage/indexeddb/db";
 
 type DataContextValue = {
   ideas: CapturedIdea[];
@@ -86,6 +87,21 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setStorageError(err instanceof Error ? err.message : "Failed to load live context");
     }
   }, []);
+
+  // Storage problems the user has to act on (another tab blocking an upgrade,
+  // this tab closed for a newer version) arrive as notices, not as a failed
+  // load, so they would otherwise leave the app sitting on "Loading".
+  useEffect(
+    () =>
+      subscribeToDatabaseNotices((notice) => {
+        if (notice.kind === "upgrade-unblocked") {
+          setStorageError((current) => (current === UPGRADE_BLOCKED_MESSAGE ? null : current));
+        } else {
+          setStorageError(notice.message);
+        }
+      }),
+    [],
+  );
 
   useEffect(() => {
     let mounted = true;
