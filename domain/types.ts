@@ -96,6 +96,41 @@ export type CandidateParlay = {
   revision?: number;
 };
 
+/**
+ * Where a saved leg's price came from, from the one price resolver (INV-12):
+ * the price the leg was placed at and its provenance. The estimate saved on
+ * the same record was computed from these same resolutions.
+ */
+export type SnapshotLegPrice =
+  | {
+      /** The live price at the slip's book. */
+      source: "current";
+      oddsAmerican: number;
+      line: number | null;
+      /** The slip's book, as the slip names it. */
+      book: string | null;
+      /** When that live price was fetched; null if unknown. */
+      oddsFetchedAt: string | null;
+    }
+  | {
+      /** The capture price, used because no live price was stored. */
+      source: "capture";
+      oddsAmerican: number;
+      line: number | null;
+      /** The book the capture price was observed at (the idea's sportsbookAtCapture), as typed; null if unknown. */
+      book: string | null;
+      /** How that book compares to the slip's: a capture price from another book is never the slip book's price. */
+      bookMatch: "same" | "different" | "unverified" | "unknown";
+    }
+  | {
+      /** No price: nothing stored, or the slip's book no longer offers the market. */
+      source: "unavailable";
+      oddsAmerican: null;
+      line: null;
+      book: null;
+      unavailableReason?: "market_not_offered";
+    };
+
 export type FinalizedLegSnapshot = {
   ideaId: string;
   // Optional, not `string | null`: records finalized before this field
@@ -111,9 +146,17 @@ export type FinalizedLegSnapshot = {
   selection: string | null;
   lineAtCapture: number | null;
   oddsAtCaptureAmerican: number | null;
+  /** The live line at the slip's book at placement; null unless the leg was priced from a live price. */
   lineAtFinalize: number | null;
+  /** The live price at the slip's book at placement; null unless the leg was priced from a live price. */
   oddsAtFinalizeAmerican: number | null;
   sportsbookAtCapture: string | null;
+  /**
+   * The price this leg was placed at and where it came from (INV-12). Optional
+   * for the same reason as playerId: records saved before it existed have no
+   * such key, and nothing is inferred for them.
+   */
+  price?: SnapshotLegPrice;
 };
 
 export type FinalizedParlay = {

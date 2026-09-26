@@ -1,5 +1,10 @@
-import type { FinalizedLegSnapshot, FinalizedParlay } from "@/domain/types";
-import { calculateCombinedEstimate, calculatePayoutCents } from "@/domain/odds/estimate";
+import type { CapturedIdea, FinalizedLegSnapshot, FinalizedParlay } from "@/domain/types";
+import {
+  calculateCombinedEstimate,
+  calculatePayoutCents,
+  legPriceInputs,
+  snapshotLegPrice,
+} from "@/domain/odds/estimate";
 import { isValidAmericanOdds } from "@/domain/odds/conversion";
 import { candidateRevision, isPlaced } from "@/domain/candidates/candidateState";
 import { AlreadyPlacedError, CandidateNotFoundError, StaleCandidateError } from "@/domain/candidates/errors";
@@ -110,22 +115,32 @@ function planPlacement(
     throw new Error("Cannot finalize a candidate with no legs");
   }
 
-  const legSnapshots: FinalizedLegSnapshot[] = [];
-  const estimateInputs = [];
-  const missingIdeaIds: string[] = [];
+  const missingIdeaIds = candidate.ideaIds.filter((ideaId) => !ideas.has(ideaId));
+  if (missingIdeaIds.length > 0) {
+    throw new Error(
+      `Cannot finalize: ${missingIdeaIds.length} leg(s) reference an idea that no longer exists (${missingIdeaIds.join(", ")}). Remove them from the candidate first.`,
+    );
+  }
+  const legs = candidate.ideaIds.map((ideaId) => ideas.get(ideaId) as CapturedIdea);
 
-  for (const ideaId of candidate.ideaIds) {
-    const idea = ideas.get(ideaId);
-    if (!idea) {
-      missingIdeaIds.push(ideaId);
-      continue;
-    }
-    const liveContext = liveContexts.get(ideaId);
-    // A market the book no longer offers has no price or line to record: what is
-    // still stored is the last-known value, not what the slip would have been placed at.
-    const marketOffered = liveContext?.marketAvailable !== false;
+  // INV-12: each leg's price is resolved ONCE, by the same resolver and from
+  // the same inputs as the builder's estimate, and that one resolution is both
+  // what the saved estimate multiplies and what the leg's snapshot records.
+  const estimate = calculateCombinedEstimate(
+    legPriceInputs(legs, candidate.sportsbook, (ideaId) => liveContexts.get(ideaId)),
+  );
+  const estimatedOddsAmerican = estimate.ok ? estimate.americanOdds : null;
+  const estimatedPayoutCents = estimate.ok
+    ? calculatePayoutCents(candidate.stakeCents, estimate.decimalOdds)
+    : null;
 
-    legSnapshots.push({
+  const legSnapshots: FinalizedLegSnapshot[] = legs.map((idea, index) => {
+    const resolved = estimate.legSources[index];
+    // The live price and line at the slip's book, only when the leg was priced
+    // from it: a market the book no longer offers keeps its last-known value
+    // in live context, but that isn't what the slip was placed at.
+    const live = resolved.source === "current";
+    return {
       ideaId: idea.id,
       playerId: idea.playerId,
       playerName: idea.playerName,
@@ -136,33 +151,12 @@ function planPlacement(
       selection: idea.selection,
       lineAtCapture: idea.lineAtCapture,
       oddsAtCaptureAmerican: idea.oddsAtCaptureAmerican,
-      lineAtFinalize: marketOffered ? (liveContext?.currentLine ?? null) : null,
-      oddsAtFinalizeAmerican: marketOffered ? (liveContext?.currentOddsAmerican ?? null) : null,
+      lineAtFinalize: live ? resolved.line : null,
+      oddsAtFinalizeAmerican: live ? resolved.oddsAmerican : null,
       sportsbookAtCapture: idea.sportsbookAtCapture,
-    });
-
-    estimateInputs.push({
-      ideaId: idea.id,
-      eventId: idea.eventId,
-      currentOddsAmerican: liveContext?.currentOddsAmerican ?? null,
-      captureOddsAmerican: idea.oddsAtCaptureAmerican,
-      captureSportsbook: idea.sportsbookAtCapture,
-      slipSportsbook: candidate.sportsbook,
-      marketAvailable: liveContext?.marketAvailable ?? null,
-    });
-  }
-
-  if (missingIdeaIds.length > 0) {
-    throw new Error(
-      `Cannot finalize: ${missingIdeaIds.length} leg(s) reference an idea that no longer exists (${missingIdeaIds.join(", ")}). Remove them from the candidate first.`,
-    );
-  }
-
-  const estimate = calculateCombinedEstimate(estimateInputs);
-  const estimatedOddsAmerican = estimate.ok ? estimate.americanOdds : null;
-  const estimatedPayoutCents = estimate.ok
-    ? calculatePayoutCents(candidate.stakeCents, estimate.decimalOdds)
-    : null;
+      price: snapshotLegPrice(resolved, candidate.sportsbook),
+    };
+  });
 
   const finalizedAt = new Date().toISOString();
   const finalized: FinalizedParlay = {

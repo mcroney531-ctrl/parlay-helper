@@ -1,6 +1,11 @@
 import { americanToDecimal, decimalToAmerican, roundAmerican } from "./conversion";
 import { compareSportsbooks, type SportsbookMatch } from "@/domain/sportsbook";
-import type { CapturedIdea, LiveContext } from "@/domain/types";
+import type { CapturedIdea, LiveContext, SnapshotLegPrice } from "@/domain/types";
+
+// The canonical resolver (INV-12): every place that needs "the price of this
+// leg" (the builder's estimate, finalize's saved estimate and each saved leg's
+// snapshot) builds its input with legPriceInputs and resolves it with
+// resolveLegPrice. Nothing else picks between a live price and a capture price.
 
 export type LegPriceSource = "current" | "capture" | "unavailable";
 
@@ -8,7 +13,13 @@ export type LegPriceInput = {
   ideaId: string;
   eventId: string | null;
   currentOddsAmerican: number | null;
+  /** The line the live price is for (live context's currentLine). Missing means none. */
+  currentLine?: number | null;
+  /** When the live price was fetched (live context's oddsFetchedAt). Missing means unknown. */
+  currentOddsFetchedAt?: string | null;
   captureOddsAmerican: number | null;
+  /** The line the capture price is for (the idea's lineAtCapture). Missing means none. */
+  captureLine?: number | null;
   /** Where captureOddsAmerican was observed (the idea's sportsbookAtCapture). Missing or blank means unknown. */
   captureSportsbook?: string | null;
   /** The sportsbook of the slip this estimate is for. Missing or blank means unknown. */
@@ -27,6 +38,10 @@ export type ResolvedLegPrice = {
   eventId: string | null;
   oddsAmerican: number | null;
   source: LegPriceSource;
+  /** The line oddsAmerican is for: the live line for "current", the capture line for "capture", null for "unavailable". */
+  line: number | null;
+  /** Only when source is "current": when that live price was fetched (null if unknown). */
+  oddsFetchedAt?: string | null;
   /** Only when source is "unavailable" because the slip's book no longer offers the market. */
   unavailableReason?: "market_not_offered";
   /** With unavailableReason: the last stored live price, for display only. Never used in an estimate or a snapshot. */
@@ -58,12 +73,20 @@ export function resolveLegPrice(leg: LegPriceInput): ResolvedLegPrice {
       eventId: leg.eventId,
       oddsAmerican: null,
       source: "unavailable",
+      line: null,
       unavailableReason: "market_not_offered",
       lastKnownOddsAmerican: leg.currentOddsAmerican,
     };
   }
   if (leg.currentOddsAmerican !== null) {
-    return { ideaId: leg.ideaId, eventId: leg.eventId, oddsAmerican: leg.currentOddsAmerican, source: "current" };
+    return {
+      ideaId: leg.ideaId,
+      eventId: leg.eventId,
+      oddsAmerican: leg.currentOddsAmerican,
+      source: "current",
+      line: leg.currentLine ?? null,
+      oddsFetchedAt: leg.currentOddsFetchedAt ?? null,
+    };
   }
   if (leg.captureOddsAmerican !== null) {
     return {
@@ -71,13 +94,52 @@ export function resolveLegPrice(leg: LegPriceInput): ResolvedLegPrice {
       eventId: leg.eventId,
       oddsAmerican: leg.captureOddsAmerican,
       source: "capture",
+      line: leg.captureLine ?? null,
       captureBook: {
         label: leg.captureSportsbook?.trim() || null,
         match: compareSportsbooks(leg.captureSportsbook, leg.slipSportsbook),
       },
     };
   }
-  return { ideaId: leg.ideaId, eventId: leg.eventId, oddsAmerican: null, source: "unavailable" };
+  return { ideaId: leg.ideaId, eventId: leg.eventId, oddsAmerican: null, source: "unavailable", line: null };
+}
+
+/**
+ * What a saved leg records about its price: exactly one resolution from
+ * resolveLegPrice, so the saved leg and the saved estimate (built from the same
+ * resolutions) can't disagree about it. The book is named for every priced
+ * leg: the slip's book for a live price (live context is kept per book), the
+ * capture book, as typed, for a capture price.
+ */
+export function snapshotLegPrice(resolved: ResolvedLegPrice, slipSportsbook: string): SnapshotLegPrice {
+  // resolveLegPrice only returns "current" or "capture" with a price.
+  const oddsAmerican = resolved.oddsAmerican as number;
+  switch (resolved.source) {
+    case "current":
+      return {
+        source: "current",
+        oddsAmerican,
+        line: resolved.line,
+        book: slipSportsbook.trim() || null,
+        oddsFetchedAt: resolved.oddsFetchedAt ?? null,
+      };
+    case "capture":
+      return {
+        source: "capture",
+        oddsAmerican,
+        line: resolved.line,
+        book: resolved.captureBook?.label ?? null,
+        bookMatch: resolved.captureBook?.match ?? "unknown",
+      };
+    case "unavailable":
+      return {
+        source: "unavailable",
+        oddsAmerican: null,
+        line: null,
+        book: null,
+        ...(resolved.unavailableReason ? { unavailableReason: resolved.unavailableReason } : {}),
+      };
+  }
 }
 
 /** The resolver input for each leg of a slip, so every screen that counts prices resolves them the same way. */
@@ -92,7 +154,10 @@ export function legPriceInputs(
       ideaId: leg.id,
       eventId: leg.eventId,
       currentOddsAmerican: live?.currentOddsAmerican ?? null,
+      currentLine: live?.currentLine ?? null,
+      currentOddsFetchedAt: live?.oddsFetchedAt ?? null,
       captureOddsAmerican: leg.oddsAtCaptureAmerican,
+      captureLine: leg.lineAtCapture,
       captureSportsbook: leg.sportsbookAtCapture,
       slipSportsbook,
       marketAvailable: live?.marketAvailable ?? null,
