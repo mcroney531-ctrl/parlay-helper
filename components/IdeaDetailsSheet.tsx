@@ -24,6 +24,23 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+/**
+ * What picking a game fills in. The game says nothing about which side the
+ * player is on, so a blank Team is never guessed (defaulting to either side is
+ * wrong for every player on the other one). Opponent is filled only when Team
+ * already names one side exactly; anything the user entered is kept.
+ */
+export function teamFieldsForPickedEvent(
+  team: string,
+  opponent: string,
+  event: { homeTeam: string; awayTeam: string },
+): { opponent?: string } {
+  if (opponent.trim()) return {};
+  if (team.trim() === event.homeTeam) return { opponent: event.awayTeam };
+  if (team.trim() === event.awayTeam) return { opponent: event.homeTeam };
+  return {};
+}
+
 export function IdeaDetailsSheet({
   idea,
   onClose,
@@ -209,8 +226,8 @@ export function IdeaDetailsSheet({
                   league={values.league}
                   onChange={(id, meta) => {
                     set("eventId", id);
-                    if (meta && !values.team.trim()) set("team", meta.awayTeam);
-                    if (meta && !values.opponent.trim()) set("opponent", meta.homeTeam);
+                    const filled = meta ? teamFieldsForPickedEvent(values.team, values.opponent, meta) : {};
+                    if (filled.opponent !== undefined) set("opponent", filled.opponent);
                   }}
                 />
               </Field>
