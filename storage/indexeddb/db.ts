@@ -76,6 +76,8 @@ function runMigrations(db: IDBPDatabase<ParlayHelperDB>, oldVersion: number, tra
   // naming the candidate it placed. No record is read or rewritten here:
   // candidates without a status are drafts, and records written before v3 keep
   // no candidateId, because which candidate they came from is never inferred.
+  // From v3 on, new candidates are written with status "draft" and revision 0
+  // explicitly, so a missing field only ever means a record from before v3.
   //
   // The one structural change is a UNIQUE index on finalized.candidateId, so
   // the store itself refuses a second record for the same candidate. Records
@@ -126,6 +128,18 @@ export class DatabaseVersionError extends Error {
     super("Your saved data is from a newer version of Parlay Helper. Reload the page to get the latest version.");
     this.name = "DatabaseVersionError";
   }
+}
+
+/**
+ * The upgrade message to show after a notice, given the one currently shown.
+ * These messages describe a problem that only goes away when it is actually
+ * resolved, so nothing but the notices themselves clears them: "blocked" is
+ * cleared by "unblocked" (and only if it is still the message showing), and
+ * "closed for a newer version" stays until the page reloads.
+ */
+export function nextDatabaseNotice(current: string | null, notice: DatabaseNotice): string | null {
+  if (notice.kind === "upgrade-unblocked") return current === UPGRADE_BLOCKED_MESSAGE ? null : current;
+  return notice.message;
 }
 
 const listeners = new Set<(notice: DatabaseNotice) => void>();

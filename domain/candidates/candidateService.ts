@@ -27,6 +27,10 @@ export async function createCandidate(name: string, sportsbook: string): Promise
     promoMaxStakeCents: null,
     createdAt: timestamp,
     updatedAt: timestamp,
+    // Written explicitly so that a missing status/revision only ever means a
+    // candidate saved before schema v3.
+    status: "draft",
+    revision: 0,
   };
   await putCandidate(candidate);
   return candidate;
@@ -38,13 +42,18 @@ export async function cloneCandidate(id: string, newName?: string): Promise<Cand
     throw new Error(`Candidate ${id} not found`);
   }
   const timestamp = nowISO();
+  // Copy the slip's contents but none of its placement state: a clone of a
+  // placed slip is a brand-new draft, and the source is left untouched.
   const clone: CandidateParlay = {
     ...source,
     id: newId(),
     name: newName?.trim() || `${source.name} (copy)`,
     createdAt: timestamp,
     updatedAt: timestamp,
+    status: "draft",
+    revision: 0,
   };
+  delete clone.placedAt;
   await putCandidate(clone);
   return clone;
 }

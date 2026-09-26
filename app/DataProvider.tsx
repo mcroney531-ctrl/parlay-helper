@@ -7,7 +7,7 @@ import { listCandidates } from "@/domain/candidates/candidateService";
 import { listFinalizedParlays } from "@/domain/history/finalizeService";
 import { getAllLiveContext, liveContextKey } from "@/storage/indexeddb/repositories/liveContextRepository";
 import { resolveActiveCandidateId } from "@/domain/candidates/activeCandidate";
-import { UPGRADE_BLOCKED_MESSAGE, subscribeToDatabaseNotices } from "@/storage/indexeddb/db";
+import { nextDatabaseNotice, subscribeToDatabaseNotices } from "@/storage/indexeddb/db";
 
 type DataContextValue = {
   ideas: CapturedIdea[];
@@ -16,7 +16,15 @@ type DataContextValue = {
   /** Keyed by liveContextKey(ideaId, sportsbook) — never just ideaId, since the same idea can carry different prices per book. */
   liveContextByKey: Record<string, LiveContext>;
   loading: boolean;
+  /** A failed load or write. The user can dismiss it. */
   storageError: string | null;
+  dismissStorageError: () => void;
+  /**
+   * An upgrade problem the user has to act on (close other tabs, or reload).
+   * Kept apart from storageError so it can't be dismissed while unresolved;
+   * only the database notices themselves clear it.
+   */
+  databaseNotice: string | null;
   refreshIdeas: () => Promise<void>;
   refreshCandidates: () => Promise<void>;
   refreshFinalized: () => Promise<void>;
@@ -44,6 +52,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [liveContextByKey, setLiveContextByKey] = useState<Record<string, LiveContext>>({});
   const [loading, setLoading] = useState(true);
   const [storageError, setStorageError] = useState<string | null>(null);
+  const [databaseNotice, setDatabaseNotice] = useState<string | null>(null);
   const [activeCandidateIdRaw, setActiveCandidateIdRaw] = useState<string | null>(() => {
     try {
       return window.localStorage.getItem(ACTIVE_CANDIDATE_KEY);
@@ -93,13 +102,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   // load, so they would otherwise leave the app sitting on "Loading".
   useEffect(
     () =>
-      subscribeToDatabaseNotices((notice) => {
-        if (notice.kind === "upgrade-unblocked") {
-          setStorageError((current) => (current === UPGRADE_BLOCKED_MESSAGE ? null : current));
-        } else {
-          setStorageError(notice.message);
-        }
-      }),
+      subscribeToDatabaseNotices((notice) => setDatabaseNotice((current) => nextDatabaseNotice(current, notice))),
     [],
   );
 
@@ -113,6 +116,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       mounted = false;
     };
   }, [refreshIdeas, refreshCandidates, refreshFinalized, refreshLiveContext]);
+
+  const dismissStorageError = useCallback(() => setStorageError(null), []);
 
   const setActiveCandidateId = useCallback((id: string | null) => {
     setActiveCandidateIdRaw(id);
@@ -142,6 +147,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       liveContextByKey,
       loading,
       storageError,
+      dismissStorageError,
+      databaseNotice,
       refreshIdeas,
       refreshCandidates,
       refreshFinalized,
@@ -157,6 +164,8 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       liveContextByKey,
       loading,
       storageError,
+      dismissStorageError,
+      databaseNotice,
       refreshIdeas,
       refreshCandidates,
       refreshFinalized,

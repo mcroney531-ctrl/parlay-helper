@@ -7,6 +7,7 @@ import {
   UPGRADE_BLOCKED_MESSAGE,
   __setDBForTests,
   getDB,
+  nextDatabaseNotice,
   subscribeToDatabaseNotices,
   type DatabaseNotice,
 } from "../db";
@@ -291,5 +292,21 @@ describe("the upgrade never hangs (INV-14)", () => {
     // attempt and succeeds instead of returning the old rejection.
     await deleteDB(DB_NAME);
     expect((await getDB()).version).toBe(SCHEMA_VERSION);
+  });
+});
+
+describe("upgrade notices only clear when the problem is resolved", () => {
+  const blocked: DatabaseNotice = { kind: "upgrade-blocked", message: UPGRADE_BLOCKED_MESSAGE };
+  const closed: DatabaseNotice = { kind: "closed-for-newer-version", message: CLOSED_FOR_NEWER_VERSION_MESSAGE };
+
+  it("shows the blocked message until the upgrade goes through", () => {
+    expect(nextDatabaseNotice(null, blocked)).toBe(UPGRADE_BLOCKED_MESSAGE);
+    expect(nextDatabaseNotice(UPGRADE_BLOCKED_MESSAGE, { kind: "upgrade-unblocked" })).toBeNull();
+  });
+
+  it("keeps the closed-for-newer-version message even if an unblocked notice arrives", () => {
+    expect(nextDatabaseNotice(null, closed)).toBe(CLOSED_FOR_NEWER_VERSION_MESSAGE);
+    expect(nextDatabaseNotice(CLOSED_FOR_NEWER_VERSION_MESSAGE, { kind: "upgrade-unblocked" })).toBe(CLOSED_FOR_NEWER_VERSION_MESSAGE);
+    expect(nextDatabaseNotice(null, { kind: "upgrade-unblocked" })).toBeNull();
   });
 });
