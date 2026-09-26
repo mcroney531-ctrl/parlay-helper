@@ -42,3 +42,30 @@ describe("resolveActiveCandidateId", () => {
     expect(resolveActiveCandidateId([a, b], "deleted-id")).toBe("b");
   });
 });
+
+describe("resolveActiveCandidateId never returns a placed slip (INV-7)", () => {
+  it("ignores a stale stored pointer that names a placed slip", () => {
+    const placed = makeCandidate({ id: "placed", status: "placed", updatedAt: "2026-09-05T00:00:00.000Z" });
+    const draft = makeCandidate({ id: "draft", status: "draft", updatedAt: "2026-09-01T00:00:00.000Z" });
+    expect(resolveActiveCandidateId([placed, draft], "placed")).toBe("draft");
+  });
+
+  it("with no stored pointer, falls back to the most recently updated draft, skipping a newer placed slip", () => {
+    const placed = makeCandidate({ id: "placed", status: "placed", updatedAt: "2026-09-05T00:00:00.000Z" });
+    const older = makeCandidate({ id: "older", updatedAt: "2026-09-01T00:00:00.000Z" });
+    const newer = makeCandidate({ id: "newer", status: "draft", updatedAt: "2026-09-03T00:00:00.000Z" });
+    expect(resolveActiveCandidateId([placed, older, newer], null)).toBe("newer");
+  });
+
+  it("with no stored pointer and every slip placed, returns null", () => {
+    const a = makeCandidate({ id: "a", status: "placed" });
+    const b = makeCandidate({ id: "b", status: "placed", updatedAt: "2026-09-05T00:00:00.000Z" });
+    expect(resolveActiveCandidateId([a, b], null)).toBeNull();
+    expect(resolveActiveCandidateId([a, b], "a")).toBeNull();
+  });
+
+  it("still treats a slip with no status (saved before v3) as a draft", () => {
+    const legacy = makeCandidate({ id: "legacy" });
+    expect(resolveActiveCandidateId([legacy], null)).toBe("legacy");
+  });
+});

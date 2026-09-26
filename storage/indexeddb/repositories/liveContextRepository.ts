@@ -9,6 +9,11 @@ export function liveContextKey(ideaId: string, sportsbook: string): string {
   return `${ideaId}::${storeBook(sportsbook)}`;
 }
 
+/** The IDB key a row for (idea, sportsbook) is stored under, for reads inside a caller's own transaction. */
+export function liveContextStoreKey(ideaId: string, sportsbook: string): [string, string] {
+  return [ideaId, storeBook(sportsbook)];
+}
+
 /** The book half of the IDB key: canonical, or the raw text only when it has no letters or digits at all. */
 function storeBook(sportsbook: string): string {
   return canonicalSportsbookId(sportsbook) ?? sportsbook;
@@ -69,7 +74,12 @@ async function rekeyLegacyRows(db: IDBPDatabase<ParlayHelperDB>): Promise<void> 
 
 const rekeyed = new WeakMap<object, Promise<void>>();
 
-async function readyDB(): Promise<IDBPDatabase<ParlayHelperDB>> {
+/**
+ * getDB, once this connection's legacy rekey has run. Exported for code that
+ * reads live context inside its own transaction (placement): the rekey is its
+ * own transaction and has to finish before that one starts.
+ */
+export async function liveContextReadyDB(): Promise<IDBPDatabase<ParlayHelperDB>> {
   const db = await getDB();
   let pending = rekeyed.get(db);
   if (!pending) {
@@ -89,7 +99,7 @@ async function readyDB(): Promise<IDBPDatabase<ParlayHelperDB>> {
  * kept as sportsbookLabel unless the caller already supplied a label.
  */
 export async function putLiveContext(context: LiveContext): Promise<void> {
-  const db = await readyDB();
+  const db = await liveContextReadyDB();
   const canonical = canonicalSportsbookId(context.sportsbook);
   if (canonical === null) {
     await db.put(STORES.liveContext, context);
@@ -104,18 +114,18 @@ export async function putLiveContext(context: LiveContext): Promise<void> {
 
 /** Scoped to one (idea, sportsbook) pair — a candidate's price/status never bleeds into another book's slip. Spelling variants of the same book resolve to the same row. */
 export async function getLiveContext(ideaId: string, sportsbook: string): Promise<LiveContext | undefined> {
-  const db = await readyDB();
-  return db.get(STORES.liveContext, [ideaId, storeBook(sportsbook)]);
+  const db = await liveContextReadyDB();
+  return db.get(STORES.liveContext, liveContextStoreKey(ideaId, sportsbook));
 }
 
 export async function getAllLiveContext(): Promise<LiveContext[]> {
-  const db = await readyDB();
+  const db = await liveContextReadyDB();
   return db.getAll(STORES.liveContext);
 }
 
 /** Removes every book's row for one idea, in one transaction. */
 export async function deleteLiveContextForIdea(ideaId: string): Promise<void> {
-  const db = await readyDB();
+  const db = await liveContextReadyDB();
   const tx = db.transaction(STORES.liveContext, "readwrite");
   const keys = await tx.store.index("by-ideaId").getAllKeys(ideaId);
   for (const key of keys) await tx.store.delete(key);

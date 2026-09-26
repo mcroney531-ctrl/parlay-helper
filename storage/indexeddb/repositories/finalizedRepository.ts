@@ -17,3 +17,9 @@ export async function getFinalizedParlay(id: string): Promise<FinalizedParlay | 
   const db = await getDB();
   return db.get(STORES.finalized, id);
 }
+
+/** The id of the finalized record that placed this candidate, if any (records from before v3 name none). */
+export async function getFinalizedIdForCandidate(candidateId: string): Promise<string | undefined> {
+  const db = await getDB();
+  return db.getKeyFromIndex(STORES.finalized, "by-candidateId", candidateId);
+}

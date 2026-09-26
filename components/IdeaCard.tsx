@@ -13,6 +13,7 @@ import { IdeaDetailsSheet } from "@/components/IdeaDetailsSheet";
 import { valuesToPatch, type StructuredFormValues } from "@/components/StructuredDetailsForm";
 import { archiveIdea, unarchiveIdea, updateIdeaDetails } from "@/domain/ideas/ideaService";
 import { addLegToCandidate } from "@/domain/candidates/candidateService";
+import { isPlaced } from "@/domain/candidates/candidateState";
 import { useData } from "@/app/DataProvider";
 
 /**
@@ -29,7 +30,8 @@ export function IdeaCard({ idea, variant }: { idea: CapturedIdea; variant: "comp
   const [addedMessage, setAddedMessage] = useState<string | null>(null);
 
   const inCurrentSlip = Boolean(activeCandidate?.ideaIds.includes(idea.id));
-  const otherCandidates = candidates.filter((c) => c.id !== activeCandidateId);
+  // A placed slip can't take new legs (INV-2).
+  const otherCandidates = candidates.filter((c) => c.id !== activeCandidateId && !isPlaced(c));
 
   async function saveDetails(values: StructuredFormValues) {
     await updateIdeaDetails(idea.id, valuesToPatch(values));

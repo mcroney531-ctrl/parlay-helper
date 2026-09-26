@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { finalizeCandidate } from "@/domain/history/finalizeService";
+import { AlreadyPlacedError, CandidateNotFoundError, StaleCandidateError } from "@/domain/candidates/errors";
 import { useData } from "@/app/DataProvider";
 import { Card } from "@/components/Card";
 import { Button, TextArea, TextInput } from "@/components/FormControls";
@@ -16,9 +17,18 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-export function FinalizeSection({ candidateId, legCount }: { candidateId: string; legCount: number }) {
+export function FinalizeSection({
+  candidateId,
+  seenRevision,
+  legCount,
+}: {
+  candidateId: string;
+  /** The revision of the candidate as rendered: placement is rejected if it changed since (INV-6). */
+  seenRevision: number;
+  legCount: number;
+}) {
   const router = useRouter();
-  const { refreshFinalized } = useData();
+  const { refreshCandidates, refreshFinalized, setActiveCandidateId } = useData();
   const [actualOdds, setActualOdds] = useState("");
   const [actualPayout, setActualPayout] = useState("");
   const [betId, setBetId] = useState("");
@@ -30,15 +40,23 @@ export function FinalizeSection({ candidateId, legCount }: { candidateId: string
     setSaving(true);
     setError(null);
     try {
-      await finalizeCandidate(candidateId, {
+      await finalizeCandidate(candidateId, seenRevision, {
         actualSportsbookOddsAmerican: actualOdds.trim() ? Number(actualOdds) : null,
         actualSportsbookPayoutCents: actualPayout.trim() ? Math.round(parseFloat(actualPayout) * 100) : null,
         sportsbookBetId: betId,
         note,
       });
-      await refreshFinalized();
+      // The placed slip is no longer current whatever the pointer says (INV-7);
+      // clearing the pointer just tidies it.
+      setActiveCandidateId(null);
+      await Promise.all([refreshCandidates(), refreshFinalized()]);
       router.push("/history");
     } catch (err) {
+      // The slip on screen is out of date: reload it so what's shown matches
+      // what's stored before the user tries again.
+      if (err instanceof AlreadyPlacedError || err instanceof StaleCandidateError || err instanceof CandidateNotFoundError) {
+        await Promise.all([refreshCandidates(), refreshFinalized()]);
+      }
       setError(err instanceof Error ? err.message : "Could not finalize.");
     } finally {
       setSaving(false);

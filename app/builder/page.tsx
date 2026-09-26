@@ -23,6 +23,7 @@ import { SportsbookSupportHint } from "@/components/SportsbookSupportHint";
 import { detectCorrelationSignals } from "@/domain/rules/correlation";
 import { detectConcentrationSignals } from "@/domain/rules/concentration";
 import { createCandidate, removeLegFromCandidate } from "@/domain/candidates/candidateService";
+import { candidateRevision } from "@/domain/candidates/candidateState";
 import { describeRefreshNotice, describeRefreshProblem, refreshCandidateContext } from "@/domain/odds/refreshService";
 import { liveContextKey } from "@/storage/indexeddb/repositories/liveContextRepository";
 
@@ -256,7 +257,7 @@ export default function BuilderPage() {
 
                   <PromoAndStakePanel candidate={candidate} />
 
-                  <FinalizeSection candidateId={candidate.id} legCount={legs.length} />
+                  <FinalizeSection candidateId={candidate.id} seenRevision={candidateRevision(candidate)} legCount={legs.length} />
                 </div>
               )}
             </>
