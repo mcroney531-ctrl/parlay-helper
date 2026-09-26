@@ -5,6 +5,8 @@ import { createCandidate, addLegToCandidate } from "@/domain/candidates/candidat
 import { captureStructuredIdea } from "@/domain/ideas/ideaService";
 import { __setDBForTests } from "@/storage/indexeddb/db";
 import { putLiveContext } from "@/storage/indexeddb/repositories/liveContextRepository";
+import { putFinalizedParlay } from "@/storage/indexeddb/repositories/finalizedRepository";
+import { sleeperHeadshotUrl } from "@/components/sleeperImage";
 
 beforeEach(() => {
   (globalThis as unknown as { indexedDB: IDBFactory }).indexedDB = new IDBFactory();
@@ -148,5 +150,73 @@ describe("finalizeCandidate", () => {
     // The FanDuel candidate must never pick up DraftKings' cached price.
     expect(finalized.legSnapshots[0].lineAtFinalize).toBeNull();
     expect(finalized.legSnapshots[0].oddsAtFinalizeAmerican).toBeNull();
+  });
+
+  it("carries the idea's playerId into the snapshot, frozen at finalize time", async () => {
+    const idea = await captureStructuredIdea("Mahomes O1.5 pass TDs", {
+      marketKey: "player_pass_tds",
+      selection: "over",
+      playerId: "4046",
+    });
+    const candidate = await createCandidate("Sunday Core", "FanDuel");
+    await addLegToCandidate(candidate.id, idea.id);
+    const finalized = await finalizeCandidate(candidate.id);
+
+    expect(finalized.legSnapshots[0].playerId).toBe("4046");
+
+    // Re-matching the idea to a different player afterward must not reach
+    // back into the already-frozen snapshot (same immutability guarantee
+    // as the other capture-time fields, verified above for lineAtCapture).
+    const { updateIdeaDetails } = await import("@/domain/ideas/ideaService");
+    await updateIdeaDetails(idea.id, { playerId: "9999" });
+    const stored = (await listFinalizedParlays()).find((f) => f.id === finalized.id);
+    expect(stored?.legSnapshots[0].playerId).toBe("4046");
+  });
+
+  it("reads a legacy finalized record written before playerId existed without throwing", async () => {
+    // Simulates a record persisted by an older build of this app, before
+    // FinalizedLegSnapshot gained the playerId field — no `playerId` key
+    // in the stored object at all, not even `null`.
+    const legacyRecord = {
+      id: "legacy-1",
+      candidateName: "Old Slip",
+      sportsbook: "FanDuel",
+      legSnapshots: [
+        {
+          ideaId: "old-idea-1",
+          playerName: "Legacy Player",
+          team: "LAR",
+          opponent: "SF",
+          eventId: "evt-old",
+          marketLabel: "Receiving Yards",
+          selection: "over",
+          lineAtCapture: 60.5,
+          oddsAtCaptureAmerican: -110,
+          lineAtFinalize: null,
+          oddsAtFinalizeAmerican: null,
+          sportsbookAtCapture: "FanDuel",
+          // playerId intentionally absent
+        },
+      ],
+      stakeCents: 200,
+      estimatedOddsAmerican: 150,
+      estimatedPayoutCents: 500,
+      actualSportsbookOddsAmerican: null,
+      actualSportsbookPayoutCents: null,
+      promoLabel: "",
+      promoMaxStakeCents: null,
+      sportsbookBetId: "",
+      note: "",
+      finalizedAt: new Date().toISOString(),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliberately shaped like pre-migration stored data, not today's type.
+    } as any;
+    await putFinalizedParlay(legacyRecord);
+
+    const all = await listFinalizedParlays();
+    expect(all).toHaveLength(1);
+    expect(all[0].legSnapshots[0].playerId).toBeUndefined();
+    // The rendering path (PlayerAvatar via sleeperHeadshotUrl) must treat
+    // that missing field the same as a known-absent one: no image, no crash.
+    expect(sleeperHeadshotUrl(all[0].legSnapshots[0].playerId)).toBeNull();
   });
 });

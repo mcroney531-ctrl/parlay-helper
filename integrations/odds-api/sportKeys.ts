@@ -24,6 +24,21 @@ export function sportKeyForLeague(league: string | null): string | null {
   return LEAGUE_TO_SPORT_KEY[league.toUpperCase()] ?? null;
 }
 
+const LEAGUE_TO_SPORT_LABEL: Record<string, string> = {
+  NFL: "football",
+  NCAAF: "football",
+  NBA: "basketball",
+  NCAAB: "basketball",
+  MLB: "baseball",
+  NHL: "hockey",
+};
+
+/** UI convenience so the details editor doesn't need a separate free-text Sport field. */
+export function sportForLeague(league: string | null): string | null {
+  if (!league) return null;
+  return LEAGUE_TO_SPORT_LABEL[league.toUpperCase()] ?? null;
+}
+
 export function bookmakerKeyForSportsbook(sportsbook: string): string | null {
   return BOOKMAKER_KEY[sportsbook.trim().toLowerCase().replace(/\s+/g, "")] ?? null;
 }

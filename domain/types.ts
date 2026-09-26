@@ -68,6 +68,11 @@ export type CandidateParlay = {
 
 export type FinalizedLegSnapshot = {
   ideaId: string;
+  // Optional, not `string | null`: records finalized before this field
+  // existed have no `playerId` key at all in IndexedDB (`undefined` at
+  // read time, not `null`) — the type says so honestly rather than
+  // claiming a guarantee old persisted data doesn't actually meet.
+  playerId?: string | null;
   playerName: string | null;
   team: string | null;
   opponent: string | null;

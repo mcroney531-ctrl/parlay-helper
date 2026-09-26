@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { CandidateParlay } from "@/domain/types";
 import { cloneCandidate, createCandidate, deleteCandidate, renameCandidate } from "@/domain/candidates/candidateService";
 import { useData } from "@/app/DataProvider";
+import { Button, TextInput } from "@/components/FormControls";
+import { PlusIcon } from "@/components/icons";
 
 export function CandidateSwitcher({
   activeId,
@@ -18,6 +20,8 @@ export function CandidateSwitcher({
   const [sportsbook, setSportsbook] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -61,18 +65,18 @@ export function CandidateSwitcher({
 
   return (
     <div className="flex flex-col gap-2">
-      <div role="tablist" aria-label="Candidate parlays" className="flex gap-2 overflow-x-auto pb-1">
+      <div role="tablist" aria-label="Candidate parlays" className="flex items-center gap-2 overflow-x-auto pb-1">
         {candidates.map((candidate) => (
           <button
             key={candidate.id}
             role="tab"
             aria-selected={candidate.id === activeId}
             onClick={() => onSelect(candidate.id)}
-            className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium"
+            className="flex min-h-[40px] shrink-0 items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-semibold"
             style={{
-              borderColor: candidate.id === activeId ? "var(--accent)" : "var(--border)",
-              background: candidate.id === activeId ? "var(--accent)" : "var(--surface)",
-              color: candidate.id === activeId ? "var(--accent-foreground)" : "var(--foreground)",
+              borderColor: candidate.id === activeId ? "var(--color-brand)" : "var(--color-border)",
+              background: candidate.id === activeId ? "var(--color-brand)" : "var(--color-surface)",
+              color: candidate.id === activeId ? "#ffffff" : "var(--color-ink)",
             }}
           >
             {candidate.name} · {candidate.ideaIds.length}
@@ -82,109 +86,104 @@ export function CandidateSwitcher({
           type="button"
           onClick={() => setCreating(true)}
           aria-label="New candidate"
-          className="flex min-h-[40px] shrink-0 items-center justify-center rounded-full border px-3 py-1.5 text-sm font-semibold"
-          style={{ borderColor: "var(--border)" }}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border"
+          style={{ borderColor: "var(--color-border)", color: "var(--color-action)" }}
         >
-          +
+          <PlusIcon className="h-5 w-5" />
         </button>
       </div>
 
-      {activeId && (
-        <div className="flex gap-3 text-xs">
+      {activeId && !renamingId && (
+        <div
+          ref={menuRef}
+          className="relative self-start"
+          onBlur={(e) => {
+            if (!menuRef.current?.contains(e.relatedTarget as Node | null)) setMenuOpen(false);
+          }}
+        >
           <button
             type="button"
-            className="underline"
-            style={{ color: "var(--accent)" }}
-            onClick={() => {
-              const candidate = candidates.find((c) => c.id === activeId);
-              if (candidate) startRename(candidate);
-            }}
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-expanded={menuOpen}
+            aria-label="Slip settings"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-lg"
+            style={{ color: "var(--color-muted)" }}
           >
-            Rename candidate
+            ⋯
           </button>
-          <button
-            type="button"
-            className="underline"
-            style={{ color: "var(--accent)" }}
-            onClick={() => {
-              const candidate = candidates.find((c) => c.id === activeId);
-              if (candidate) handleClone(candidate);
-            }}
-          >
-            Clone candidate
-          </button>
-          <button
-            type="button"
-            className="underline"
-            style={{ color: "var(--danger-foreground)" }}
-            onClick={() => {
-              const candidate = candidates.find((c) => c.id === activeId);
-              if (candidate) handleDelete(candidate);
-            }}
-          >
-            Delete candidate
-          </button>
+          {menuOpen && (
+            <div
+              className="absolute left-0 top-full z-20 mt-1 flex min-w-[140px] flex-col rounded-[var(--radius-control)] border py-1 shadow-md"
+              style={{ borderColor: "var(--color-border)", background: "var(--color-surface)" }}
+            >
+              <button
+                type="button"
+                className="px-3 py-2 text-left text-sm font-medium"
+                style={{ color: "var(--color-ink)" }}
+                onClick={() => {
+                  const candidate = candidates.find((c) => c.id === activeId);
+                  if (candidate) startRename(candidate);
+                  setMenuOpen(false);
+                }}
+              >
+                Rename
+              </button>
+              <button
+                type="button"
+                className="px-3 py-2 text-left text-sm font-medium"
+                style={{ color: "var(--color-ink)" }}
+                onClick={() => {
+                  const candidate = candidates.find((c) => c.id === activeId);
+                  if (candidate) handleClone(candidate);
+                  setMenuOpen(false);
+                }}
+              >
+                Clone
+              </button>
+              <button
+                type="button"
+                className="px-3 py-2 text-left text-sm font-medium"
+                style={{ color: "var(--color-danger)" }}
+                onClick={() => {
+                  const candidate = candidates.find((c) => c.id === activeId);
+                  if (candidate) handleDelete(candidate);
+                  setMenuOpen(false);
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          )}
         </div>
       )}
 
       {renamingId && (
-        <form onSubmit={handleRenameSubmit} className="flex flex-wrap items-end gap-2 rounded-lg border p-3" style={{ borderColor: "var(--border)" }}>
-          <label className="flex flex-col gap-1 text-xs font-medium" style={{ color: "var(--muted)" }}>
+        <form onSubmit={handleRenameSubmit} className="flex flex-wrap items-end gap-2 rounded-[var(--radius-card)] border p-3" style={{ borderColor: "var(--color-border)" }}>
+          <label className="flex flex-col gap-1 text-xs font-semibold" style={{ color: "var(--color-muted)" }}>
             New name
-            <input
-              value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-              className="rounded-md border px-2 py-1.5 text-sm"
-              style={{ borderColor: "var(--border)", background: "var(--surface)" }}
-              autoFocus
-            />
+            <TextInput value={renameValue} onChange={(e) => setRenameValue(e.target.value)} autoFocus />
           </label>
-          <button
-            type="submit"
-            className="min-h-[36px] rounded-md px-3 py-1.5 text-sm font-semibold"
-            style={{ background: "var(--accent)", color: "var(--accent-foreground)" }}
-          >
-            Save name
-          </button>
-          <button type="button" onClick={() => setRenamingId(null)} className="min-h-[36px] rounded-md border px-3 py-1.5 text-sm">
+          <Button type="submit">Save name</Button>
+          <Button type="button" variant="secondary" onClick={() => setRenamingId(null)}>
             Cancel
-          </button>
+          </Button>
         </form>
       )}
 
       {creating && (
-        <form onSubmit={handleCreate} className="flex flex-wrap items-end gap-2 rounded-lg border p-3" style={{ borderColor: "var(--border)" }}>
-          <label className="flex flex-col gap-1 text-xs font-medium" style={{ color: "var(--muted)" }}>
+        <form onSubmit={handleCreate} className="flex flex-wrap items-end gap-2 rounded-[var(--radius-card)] border p-3" style={{ borderColor: "var(--color-border)" }}>
+          <label className="flex flex-col gap-1 text-xs font-semibold" style={{ color: "var(--color-muted)" }}>
             Name
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Sunday Core"
-              className="rounded-md border px-2 py-1.5 text-sm"
-              style={{ borderColor: "var(--border)", background: "var(--surface)" }}
-              autoFocus
-            />
+            <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="Sunday Core" autoFocus />
           </label>
-          <label className="flex flex-col gap-1 text-xs font-medium" style={{ color: "var(--muted)" }}>
+          <label className="flex flex-col gap-1 text-xs font-semibold" style={{ color: "var(--color-muted)" }}>
             Sportsbook
-            <input
-              value={sportsbook}
-              onChange={(e) => setSportsbook(e.target.value)}
-              placeholder="FanDuel"
-              className="rounded-md border px-2 py-1.5 text-sm"
-              style={{ borderColor: "var(--border)", background: "var(--surface)" }}
-            />
+            <TextInput value={sportsbook} onChange={(e) => setSportsbook(e.target.value)} placeholder="FanDuel" />
           </label>
-          <button
-            type="submit"
-            className="min-h-[36px] rounded-md px-3 py-1.5 text-sm font-semibold"
-            style={{ background: "var(--accent)", color: "var(--accent-foreground)" }}
-          >
-            Create
-          </button>
-          <button type="button" onClick={() => setCreating(false)} className="min-h-[36px] rounded-md border px-3 py-1.5 text-sm">
+          <Button type="submit">Create</Button>
+          <Button type="button" variant="secondary" onClick={() => setCreating(false)}>
             Cancel
-          </button>
+          </Button>
         </form>
       )}
     </div>

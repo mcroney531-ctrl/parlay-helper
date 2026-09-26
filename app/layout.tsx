@@ -1,8 +1,7 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, League_Gothic } from "next/font/google";
 import "./globals.css";
 import { NavBar } from "@/components/NavBar";
-import { OnlineStatusBanner } from "@/components/OnlineStatusBanner";
 import { DataProvider } from "./DataProvider";
 import { ServiceWorkerRegistration } from "./ServiceWorkerRegistration";
 
@@ -14,6 +13,12 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+const leagueGothic = League_Gothic({
+  variable: "--font-league-gothic",
+  subsets: ["latin"],
+  weight: "400",
 });
 
 export const metadata: Metadata = {
@@ -29,21 +34,22 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#3f5a7d",
+  themeColor: "#18332b",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${leagueGothic.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full flex flex-col" style={{ background: "var(--color-canvas)" }}>
         <ServiceWorkerRegistration />
         <DataProvider>
-          <OnlineStatusBanner />
           <NavBar />
-          <main className="mx-auto w-full max-w-3xl flex-1 px-4 pb-20 pt-4 sm:pb-8">{children}</main>
+          <main className="mx-auto w-full flex-1 pb-nav-safe" style={{ maxWidth: "var(--content-max-width)" }}>
+            {children}
+          </main>
         </DataProvider>
       </body>
     </html>

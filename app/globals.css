@@ -1,52 +1,72 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f7f7f5;
-  --surface: #ffffff;
-  --foreground: #1f2430;
-  --muted: #6b7280;
-  --border: #e2e4e8;
-  --accent: #3f5a7d;
+  /* Film Room design system tokens — see frontend handoff docs/DESIGN_SYSTEM.md */
+  --color-shell-deep: #18332b;
+  --color-brand: #26453b;
+  --color-brand-raised: #31594d;
+  --color-action: #078d74;
+  --color-action-pressed: #066653;
+  --color-ink: #16352c;
+  --color-muted: #64776f;
+  --color-canvas: #f3f6f4;
+  --color-surface: #ffffff;
+  --color-border: #d4e0dc;
+  --color-selected-bg: #e3f2ed;
+  --color-info: #316fa8;
+  --color-info-bg: #eaf2f8;
+  --color-caution-bg: #fff3d6;
+  --color-caution-fg: #7a5b00;
+  --color-missing-bg: #fff0e6;
+  --color-missing-fg: #a13f00;
+  --color-danger: #d92d20;
+  --color-danger-bg: #fbeaea;
+
+  --confidence-core-fg: #26453b;
+  --confidence-core-bg: #e3f2ed;
+  --confidence-like-fg: #316fa8;
+  --confidence-like-bg: #eaf2f8;
+  --confidence-longshot-fg: #6f5b7a;
+  --confidence-longshot-bg: #f2edf5;
+  --confidence-unrated-fg: #64776f;
+  --confidence-unrated-bg: #eef1ef;
+
+  --radius-control: 10px;
+  --radius-card: 12px;
+  --radius-sheet: 22px;
+  --touch-target: 44px;
+  --avatar-size: 44px;
+  --avatar-size-compact: 32px;
+  --bottom-nav-height: 76px;
+  --content-max-width: 760px;
+  --focus-ring: 0 0 0 3px color-mix(in srgb, var(--color-action) 35%, transparent);
+
+  /* Back-compat aliases used by not-yet-migrated inline styles. */
+  --background: var(--color-canvas);
+  --surface: var(--color-surface);
+  --foreground: var(--color-ink);
+  --muted: var(--color-muted);
+  --border: var(--color-border);
+  --accent: var(--color-action);
   --accent-foreground: #ffffff;
-  --warn-bg: #fdf3e0;
+  --warn-bg: var(--color-caution-bg);
   --warn-border: #e8c46c;
-  --warn-foreground: #6b4c04;
-  --danger-bg: #fbeaea;
+  --warn-foreground: var(--color-caution-fg);
+  --danger-bg: var(--color-danger-bg);
   --danger-border: #e59a9a;
-  --danger-foreground: #7a2020;
-  --core: #3f5a7d;
-  --like: #4d7c62;
-  --longshot: #8a6a3c;
-  --unrated: #6b7280;
+  --danger-foreground: var(--color-danger);
+  --core: var(--confidence-core-fg);
+  --like: var(--confidence-like-fg);
+  --longshot: var(--confidence-longshot-fg);
+  --unrated: var(--confidence-unrated-fg);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: var(--color-canvas);
+  --color-foreground: var(--color-ink);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #14161a;
-    --surface: #1c1f25;
-    --foreground: #e8e9ec;
-    --muted: #9aa1ac;
-    --border: #2b2f37;
-    --accent: #7fa1c9;
-    --accent-foreground: #101318;
-    --warn-bg: #2c2411;
-    --warn-border: #7a6320;
-    --warn-foreground: #e8c46c;
-    --danger-bg: #2b1414;
-    --danger-border: #7a3535;
-    --danger-foreground: #e59a9a;
-    --core: #7fa1c9;
-    --like: #7fb89a;
-    --longshot: #c9a96a;
-    --unrated: #9aa1ac;
-  }
+  --font-display: var(--font-league-gothic);
 }
 
 * {
@@ -55,8 +75,8 @@
 
 html,
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--color-canvas);
+  color: var(--color-ink);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
 
@@ -80,6 +100,63 @@ button {
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--color-action);
   outline-offset: 2px;
+  box-shadow: var(--focus-ring);
+  border-radius: 4px;
+}
+
+.font-display {
+  font-family: var(--font-league-gothic), "Arial Narrow", sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+}
+
+/* Extremely subtle X/O/route football diagram texture for the deep-green
+   header. Kept as an inline data-uri so it needs no extra network asset
+   (and therefore no service-worker precache entry). */
+.route-texture {
+  background-image:
+    radial-gradient(circle at 15% 20%, rgba(255, 255, 255, 0.10) 0 3px, transparent 3px),
+    radial-gradient(circle at 70% 60%, rgba(255, 255, 255, 0.08) 0 3px, transparent 3px),
+    url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='120' viewBox='0 0 160 120'%3E%3Cg stroke='%23FFFFFF' stroke-opacity='0.07' stroke-width='2' fill='none' stroke-linecap='round'%3E%3Cpath d='M10 90 L40 60 L70 90'/%3E%3Ccircle cx='120' cy='30' r='9'/%3E%3Cpath d='M100 100 L140 100 M120 80 L120 120' transform='rotate(45 120 100)'/%3E%3Cpath d='M60 20 Q90 10 130 40'/%3E%3Cpath d='M124 36 L130 40 L122 44'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat: no-repeat, no-repeat, repeat;
+  background-position: 10% 30%, 80% 70%, 0 0;
+}
+
+/* Team identity gradients — Builder prop cards only (rail + avatar ring). */
+.team-rail {
+  background: linear-gradient(180deg, var(--team-primary), var(--team-accent));
+}
+.team-avatar-ring {
+  background: conic-gradient(from 210deg, var(--team-primary), var(--team-accent), var(--team-primary));
+  padding: 2.5px;
+}
+@supports (color: color-mix(in oklab, red, blue)) {
+  .team-rail {
+    background: linear-gradient(
+      180deg,
+      var(--team-primary) 0%,
+      color-mix(in oklab, var(--team-primary) 70%, var(--team-accent)) 30%,
+      color-mix(in oklab, var(--team-primary), var(--team-accent)) 52%,
+      color-mix(in oklab, var(--team-primary) 25%, var(--team-accent)) 76%,
+      var(--team-accent) 100%
+    );
+  }
+  .team-avatar-ring {
+    background: conic-gradient(
+      from 210deg,
+      var(--team-primary) 0deg,
+      color-mix(in oklab, var(--team-primary) 65%, var(--team-accent)) 95deg,
+      var(--team-accent) 180deg,
+      color-mix(in oklab, var(--team-primary) 45%, var(--team-accent)) 275deg,
+      var(--team-primary) 360deg
+    );
+  }
+}
+
+/* Safe-area-aware bottom nav clearance for fixed-position content. */
+.pb-nav-safe {
+  padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px));
 }

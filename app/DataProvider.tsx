@@ -6,6 +6,7 @@ import { listIdeas } from "@/domain/ideas/ideaService";
 import { listCandidates } from "@/domain/candidates/candidateService";
 import { listFinalizedParlays } from "@/domain/history/finalizeService";
 import { getAllLiveContext, liveContextKey } from "@/storage/indexeddb/repositories/liveContextRepository";
+import { resolveActiveCandidateId } from "@/domain/candidates/activeCandidate";
 
 type DataContextValue = {
   ideas: CapturedIdea[];
@@ -19,9 +20,21 @@ type DataContextValue = {
   refreshCandidates: () => Promise<void>;
   refreshFinalized: () => Promise<void>;
   refreshLiveContext: () => Promise<void>;
+  /**
+   * The "current slip" — one candidate treated as the default target for
+   * "add to slip" across Capture/Bucket/Builder. Falls back to the most
+   * recently updated candidate when nothing's explicitly chosen yet or the
+   * remembered one no longer exists (deleted); null only when there are no
+   * candidates at all.
+   */
+  activeCandidateId: string | null;
+  setActiveCandidateId: (id: string | null) => void;
+  activeCandidate: CandidateParlay | null;
 };
 
 const DataContext = createContext<DataContextValue | null>(null);
+
+const ACTIVE_CANDIDATE_KEY = "parlay-helper:active-candidate-id";
 
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const [ideas, setIdeas] = useState<CapturedIdea[]>([]);
@@ -30,6 +43,13 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [liveContextByKey, setLiveContextByKey] = useState<Record<string, LiveContext>>({});
   const [loading, setLoading] = useState(true);
   const [storageError, setStorageError] = useState<string | null>(null);
+  const [activeCandidateIdRaw, setActiveCandidateIdRaw] = useState<string | null>(() => {
+    try {
+      return window.localStorage.getItem(ACTIVE_CANDIDATE_KEY);
+    } catch {
+      return null;
+    }
+  });
 
   const refreshIdeas = useCallback(async () => {
     try {
@@ -78,6 +98,26 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     };
   }, [refreshIdeas, refreshCandidates, refreshFinalized, refreshLiveContext]);
 
+  const setActiveCandidateId = useCallback((id: string | null) => {
+    setActiveCandidateIdRaw(id);
+    try {
+      if (id) window.localStorage.setItem(ACTIVE_CANDIDATE_KEY, id);
+      else window.localStorage.removeItem(ACTIVE_CANDIDATE_KEY);
+    } catch {
+      // Remembering the current slip across reloads is a convenience, not a requirement.
+    }
+  }, []);
+
+  const activeCandidateId = useMemo(
+    () => resolveActiveCandidateId(candidates, activeCandidateIdRaw),
+    [activeCandidateIdRaw, candidates],
+  );
+
+  const activeCandidate = useMemo(
+    () => candidates.find((c) => c.id === activeCandidateId) ?? null,
+    [candidates, activeCandidateId],
+  );
+
   const value = useMemo(
     () => ({
       ideas,
@@ -90,8 +130,25 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       refreshCandidates,
       refreshFinalized,
       refreshLiveContext,
+      activeCandidateId,
+      setActiveCandidateId,
+      activeCandidate,
     }),
-    [ideas, candidates, finalized, liveContextByKey, loading, storageError, refreshIdeas, refreshCandidates, refreshFinalized, refreshLiveContext],
+    [
+      ideas,
+      candidates,
+      finalized,
+      liveContextByKey,
+      loading,
+      storageError,
+      refreshIdeas,
+      refreshCandidates,
+      refreshFinalized,
+      refreshLiveContext,
+      activeCandidateId,
+      setActiveCandidateId,
+      activeCandidate,
+    ],
   );
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

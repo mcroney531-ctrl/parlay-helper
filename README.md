@@ -30,6 +30,12 @@ Both integrations degrade gracefully with no configuration — the core capture 
 - `RATE_LIMIT_TRUST_PROXY` — unset/`false` by default. Only set to `true` if this process sits behind a trusted reverse proxy/edge that itself appends the real client IP as the *last* hop of `X-Forwarded-For` — see **Rate limiting** below before touching this.
 - `ODDS_RATE_LIMIT_MAX` / `ODDS_RATE_LIMIT_WINDOW_MS` — override the default 20 requests / 60000 ms window for `/api/odds` and `/api/events`.
 
+## Design system
+
+Visual identity ("Film Room"): a calm deep-green shell with teal interaction accents, defined as CSS custom properties in `app/globals.css` (`--color-*`, `--confidence-*`, `--radius-*`). Shared primitives live in `components/`: `PageShell`/`AppHeader` (per-screen header + rounded content sheet), `OfflineChip` (persistent local-first status), `NavBar` (bottom tab bar), `PlayerAvatar` (44px identity slot, initials/silhouette fallback — no remote images are wired in; see below), `StatusChip` (`Pill`/`StatusRow` for confidence/status/correlation/concentration/missing/danger states), `Card`, `FormControls` (`Button`/`TextInput`/`TextArea`/`Select`), and `icons.tsx` (one inline SVG icon per concept — never sportsbook/team logos). Builder-only team-identity gradients (`teamColors.ts` + the `.team-rail`/`.team-avatar-ring` CSS classes) appear only on a leg card's left rail and avatar ring, never as a full-card background.
+
+Player photos come from Sleeper's CDN: `components/sleeperImage.ts` builds `https://sleepercdn.com/content/nfl/players/{player_id}.jpg` directly from the same `player_id` Sleeper's players endpoint already returns — no extra request, no auth. It isn't part of Sleeper's *formal* API reference (only the JSON endpoints are documented there), but it's a stable, widely-used convention. `PlayerAvatar` fetches lazily and falls back to initials/silhouette immediately on a 404 or load failure (retired player, no photo on file, offline) via an `onError` handler — never a broken-image icon. `FinalizedLegSnapshot` carries its own `playerId` (added additively; older stored records without it simply render initials, no migration needed) so History's immutable snapshots can show the same photo the leg had at capture time.
+
 ## Architecture
 
 ```

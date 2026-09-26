@@ -2,62 +2,51 @@
 
 import Link from "next/link";
 import { QuickAddForm } from "@/components/QuickAddForm";
-import { ConfidenceBadge } from "@/components/ConfidenceBadge";
+import { IdeaCard } from "@/components/IdeaCard";
+import { PageShell } from "@/components/PageShell";
+import { CurrentSlipTray } from "@/components/CurrentSlipTray";
+import { CaptureIcon } from "@/components/icons";
 import { useData } from "@/app/DataProvider";
 
 export default function CapturePage() {
   const { ideas, loading } = useData();
-  const recent = ideas.slice(0, 5);
+  const recent = ideas.filter((idea) => !idea.archivedAt).slice(0, 5);
 
   return (
-    <div className="flex flex-col gap-8">
-      <section>
-        <h1 className="mb-4 text-xl font-semibold">Quick Add</h1>
-        <QuickAddForm />
-      </section>
+    <PageShell title="CAPTURE" icon={<CaptureIcon className="h-8 w-8" />}>
+      <div className="flex flex-col gap-8">
+        <section>
+          <QuickAddForm />
+        </section>
 
-      <section>
-        <div className="mb-2 flex items-baseline justify-between">
-          <h2 className="text-sm font-semibold" style={{ color: "var(--muted)" }}>
-            Recently captured
-          </h2>
-          <Link href="/bucket" className="text-sm font-medium" style={{ color: "var(--accent)" }}>
-            View bucket →
-          </Link>
-        </div>
-        {loading ? (
-          <p className="text-sm" style={{ color: "var(--muted)" }}>
-            Loading…
-          </p>
-        ) : recent.length === 0 ? (
-          <p className="text-sm" style={{ color: "var(--muted)" }}>
-            Nothing captured yet.
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-2">
-            {recent.map((idea) => (
-              <li
-                key={idea.id}
-                className="rounded-lg border p-3"
-                style={{ borderColor: "var(--border)", background: "var(--surface)" }}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm">{idea.rawText}</p>
-                  <ConfidenceBadge confidence={idea.confidence} />
-                </div>
-                {idea.detailsStatus === "needs_details" && (
-                  <span
-                    className="mt-1 inline-block rounded px-1.5 py-0.5 text-xs font-medium"
-                    style={{ background: "var(--warn-bg)", color: "var(--warn-foreground)" }}
-                  >
-                    Needs details
-                  </span>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </div>
+        <CurrentSlipTray />
+
+        <section>
+          <div className="mb-3 flex items-baseline justify-between">
+            <h2 className="font-display text-lg" style={{ color: "var(--color-ink)" }}>
+              Recently Captured
+            </h2>
+            <Link href="/bucket" className="text-sm font-semibold" style={{ color: "var(--color-action)" }}>
+              View ideas →
+            </Link>
+          </div>
+          {loading ? (
+            <p className="text-sm" style={{ color: "var(--color-muted)" }}>
+              Loading…
+            </p>
+          ) : recent.length === 0 ? (
+            <p className="text-sm" style={{ color: "var(--color-muted)" }}>
+              Nothing captured yet.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {recent.map((idea) => (
+                <IdeaCard key={idea.id} idea={idea} variant="compact" />
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+    </PageShell>
   );
 }
