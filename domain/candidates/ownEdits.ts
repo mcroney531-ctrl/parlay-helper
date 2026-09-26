@@ -1,3 +1,4 @@
+// INTENTIONALLY BROAD (agreed with review): ANY edit this tab makes after the render counts as seen, not just saves in flight at the tap; do not narrow it (a save that commits just before the tap, ahead of the view refresh, would then fail as stale).
 // This tab's own edits to candidates, so placement can tell "the slip changed
 // because of a save the user just made here" apart from "the slip changed
 // somewhere else".
