@@ -105,9 +105,11 @@ export function IdeaDetailsSheet({
     }
   }
 
-  function handleKeyDownCapture(e: React.KeyboardEvent) {
-    // Only close the whole sheet on Escape if a nested combobox didn't
-    // already consume it (those call stopPropagation when they do).
+  function handleKeyDown(e: React.KeyboardEvent) {
+    // Bubble phase on purpose: an open player/game suggestion list handles
+    // Escape first and calls stopPropagation, so Escape closes that list and
+    // only reaches here (closing the sheet) when no list is open. A capture
+    // listener would run before the list and discard unsaved edits.
     if (e.key === "Escape") onClose();
   }
 
@@ -122,7 +124,7 @@ export function IdeaDetailsSheet({
       tabIndex={-1}
       className="fixed inset-0 z-50 flex flex-col outline-none"
       style={{ background: "var(--color-surface)" }}
-      onKeyDownCapture={handleKeyDownCapture}
+      onKeyDown={handleKeyDown}
     >
       <div
         className="flex items-center justify-between border-b px-4 py-3"
