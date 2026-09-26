@@ -9,6 +9,7 @@ import {
 } from "@/storage/indexeddb/repositories/candidatesRepository";
 import { candidateRevision, isPlaced } from "./candidateState";
 import { CandidateNotFoundError, CandidatePlacedError } from "./errors";
+import { recordOwnRevision, trackOwnEdit } from "./ownEdits";
 
 function newId(): string {
   return crypto.randomUUID();
@@ -69,20 +70,35 @@ export async function cloneCandidate(id: string, newName?: string): Promise<Cand
  * stays put, so a no-op (re-saving the same stake on blur) can't make a
  * pending placement look stale. A real change bumps both updatedAt and the
  * revision placement compares against (INV-6).
+ *
+ * Each edit is registered with ownEdits as soon as it starts, and the revision
+ * it produced is recorded once it commits, so a placement started from this
+ * tab waits for it and counts it as seen (see ownEdits.ts).
  */
-async function editDraft(
+function editDraft(
   id: string,
   edit: (existing: CandidateParlay) => Partial<CandidateParlay> | null,
 ): Promise<CandidateParlay> {
-  const result = await updateCandidate(id, (existing) => {
-    if (!existing) throw new CandidateNotFoundError(id);
-    if (isPlaced(existing)) throw new CandidatePlacedError(id);
-    const changes = edit(existing);
-    if (!changes) return null;
-    return { ...existing, ...changes, updatedAt: nowISO(), revision: candidateRevision(existing) + 1 };
-  });
-  // editDraft throws rather than write nothing for a missing candidate, so a result is always there.
-  return result as CandidateParlay;
+  return trackOwnEdit(
+    id,
+    (async () => {
+      // Set inside the transaction when a change is written: the revision it was made from.
+      const write: { from?: number } = {};
+      const result = await updateCandidate(id, (existing) => {
+        if (!existing) throw new CandidateNotFoundError(id);
+        if (isPlaced(existing)) throw new CandidatePlacedError(id);
+        const changes = edit(existing);
+        if (!changes) return null;
+        const from = candidateRevision(existing);
+        write.from = from;
+        return { ...existing, ...changes, updatedAt: nowISO(), revision: from + 1 };
+      });
+      // Only reached once the transaction has committed.
+      if (write.from !== undefined) recordOwnRevision(id, write.from, write.from + 1);
+      // editDraft throws rather than write nothing for a missing candidate, so a result is always there.
+      return result as CandidateParlay;
+    })(),
+  );
 }
 
 export async function renameCandidate(id: string, name: string): Promise<CandidateParlay> {

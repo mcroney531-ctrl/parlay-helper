@@ -3,6 +3,7 @@ import { calculateCombinedEstimate, calculatePayoutCents } from "@/domain/odds/e
 import { isValidAmericanOdds } from "@/domain/odds/conversion";
 import { candidateRevision, isPlaced } from "@/domain/candidates/candidateState";
 import { AlreadyPlacedError, CandidateNotFoundError, StaleCandidateError } from "@/domain/candidates/errors";
+import { revisionsSeenFrom, settleOwnEdits } from "@/domain/candidates/ownEdits";
 import {
   getAllFinalizedParlays,
   getFinalizedIdForCandidate,
@@ -34,6 +35,12 @@ export type FinalizeOptions = {
  * that revision (StaleCandidateError) -- it never places legs, a sportsbook, a
  * stake or a promo other than the ones the user confirmed (INV-6).
  *
+ * One exception keeps a same-tab save from counting as a change: placement
+ * first waits for this tab's in-flight edits to the candidate, and accepts the
+ * revisions this tab produced from `seenRevision` as seen (the user typed a
+ * stake and tapped Mark Placed, whose tap saved the stake). An edit made
+ * anywhere else still makes it stale. See domain/candidates/ownEdits.ts.
+ *
  * Ideas and live context are read inside the same transaction, and whatever is
  * stored at commit time is what's recorded; nothing is fetched here. A price
  * refreshed after the user's view is fine to use, because the snapshot records
@@ -58,8 +65,16 @@ export async function finalizeCandidate(
     throw new Error("Actual payout must be a non-negative amount.");
   }
 
+  // Outside the transaction: waiting on anything but an IDB request inside it
+  // would commit it early. Snapshotted here, so an edit started after this
+  // point is not counted as seen.
+  await settleOwnEdits(candidateId);
+  const seenRevisions = revisionsSeenFrom(candidateId, seenRevision);
+
   try {
-    return await commitPlacement(candidateId, (reads) => planPlacement(candidateId, seenRevision, options, reads));
+    return await commitPlacement(candidateId, (reads) =>
+      planPlacement(candidateId, seenRevision, seenRevisions, options, reads),
+    );
   } catch (error) {
     // The unique by-candidateId index refused a second record for this
     // candidate (INV-3's second guard); the transaction aborted, so nothing
@@ -78,6 +93,7 @@ export async function finalizeCandidate(
 function planPlacement(
   candidateId: string,
   seenRevision: number,
+  seenRevisions: Set<number>,
   options: FinalizeOptions,
   { candidate, existingFinalizedId, ideas, liveContexts }: PlacementReads,
 ): PlacementWrite {
@@ -87,7 +103,7 @@ function planPlacement(
   if (isPlaced(candidate)) {
     throw new AlreadyPlacedError(candidateId, existingFinalizedId ?? null);
   }
-  if (candidateRevision(candidate) !== seenRevision) {
+  if (!seenRevisions.has(candidateRevision(candidate))) {
     throw new StaleCandidateError(candidateId, seenRevision, candidateRevision(candidate));
   }
   if (candidate.ideaIds.length === 0) {

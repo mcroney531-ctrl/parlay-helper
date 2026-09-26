@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { IDBFactory } from "fake-indexeddb";
 import type { CandidateParlay, FinalizedParlay, LiveContext } from "@/domain/types";
 import { finalizeCandidate, listFinalizedParlays } from "../finalizeService";
@@ -106,6 +106,15 @@ function stubRecord(candidateId: string, finalizedAt: string): FinalizedParlay {
   };
 }
 
+/**
+ * The candidate service as loaded in ANOTHER tab: its own module state (so its
+ * edits are not this tab's own edits), the same database.
+ */
+async function otherTab() {
+  vi.resetModules();
+  return import("@/domain/candidates/candidateService");
+}
+
 async function place(id: string): Promise<FinalizedParlay> {
   return finalizeCandidate(id, candidateRevision(await stored(id)));
 }
@@ -152,6 +161,38 @@ describe("placement commits the record and the placed status together (INV-4, IN
     expect(await listFinalizedParlays()).toEqual([record]);
   });
 
+  it("records the slip-level fields the user placed, not just the legs", async () => {
+    const { slip } = await draftWithLeg();
+    await renameCandidate(slip.id, "Sunday Chaos");
+    await setCandidateSportsbook(slip.id, "DraftKings");
+    await setCandidateStake(slip.id, 1250);
+    await setCandidatePromo(slip.id, "Profit boost 25%", 2500);
+    const seen = await stored(slip.id);
+
+    const record = await finalizeCandidate(slip.id, candidateRevision(seen), {
+      actualSportsbookOddsAmerican: 450,
+      actualSportsbookPayoutCents: 6875,
+      sportsbookBetId: "DK-123",
+      note: "late swap",
+    });
+
+    const expected = {
+      candidateId: slip.id,
+      candidateName: "Sunday Chaos",
+      sportsbook: "DraftKings",
+      stakeCents: 1250,
+      promoLabel: "Profit boost 25%",
+      promoMaxStakeCents: 2500,
+      actualSportsbookOddsAmerican: 450,
+      actualSportsbookPayoutCents: 6875,
+      sportsbookBetId: "DK-123",
+      note: "late swap",
+    };
+    expect(record).toMatchObject(expected);
+    // And that is what was stored, not only what was returned.
+    expect((await listFinalizedParlays())[0]).toMatchObject(expected);
+  });
+
   it("rejects an empty candidate id before writing anything", async () => {
     await draftWithLeg();
     await expect(finalizeCandidate("", 0)).rejects.toThrow(/candidate id/);
@@ -170,10 +211,10 @@ describe("placement commits the record and the placed status together (INV-4, IN
 });
 
 describe("the placement is the version the user saw (INV-6)", () => {
-  it("rejects, writing nothing, when the slip was edited between view and commit", async () => {
+  it("rejects, writing nothing, when the slip was edited in another tab between view and commit", async () => {
     const { slip } = await draftWithLeg();
     const seen = candidateRevision(slip);
-    await setCandidateStake(slip.id, 500);
+    await (await otherTab()).setCandidateStake(slip.id, 500);
 
     const attempt = finalizeCandidate(slip.id, seen);
     await expect(attempt).rejects.toBeInstanceOf(StaleCandidateError);
@@ -182,18 +223,72 @@ describe("the placement is the version the user saw (INV-6)", () => {
     expect(await listFinalizedParlays()).toHaveLength(0);
   });
 
-  it("rejects each kind of edit, including legs, sportsbook, name and promo", async () => {
+  it("rejects each kind of edit made in another tab, including legs, sportsbook, name and promo", async () => {
+    const other = await otherTab();
     const edits: [string, (id: string) => Promise<unknown>][] = [
-      ["add a leg", async (id) => addLegToCandidate(id, (await idea("Leg B")).id)],
-      ["remove a leg", async (id) => removeLegFromCandidate(id, (await stored(id)).ideaIds[0])],
-      ["change the sportsbook", (id) => setCandidateSportsbook(id, "DraftKings")],
-      ["rename", (id) => renameCandidate(id, "Renamed")],
-      ["change the promo", (id) => setCandidatePromo(id, "Boost", 1000)],
+      ["add a leg", async (id) => other.addLegToCandidate(id, (await idea("Leg B")).id)],
+      ["remove a leg", async (id) => other.removeLegFromCandidate(id, (await stored(id)).ideaIds[0])],
+      ["change the sportsbook", (id) => other.setCandidateSportsbook(id, "DraftKings")],
+      ["rename", (id) => other.renameCandidate(id, "Renamed")],
+      ["change the promo", (id) => other.setCandidatePromo(id, "Boost", 1000)],
     ];
     for (const [label, edit] of edits) {
       const { slip } = await draftWithLeg(label);
       await edit(slip.id);
       await expect(finalizeCandidate(slip.id, candidateRevision(slip)), label).rejects.toBeInstanceOf(StaleCandidateError);
+    }
+    expect(await listFinalizedParlays()).toHaveLength(0);
+  });
+
+  it("BLUR RACE: a stake saved in the same tick as Mark Placed is placed, with the new stake", async () => {
+    // The user types 7.50 and taps Mark Placed. The tap blurs the stake field
+    // (its save starts) and then clicks the button, whose revision was
+    // rendered before the save.
+    const { slip } = await draftWithLeg();
+    const seen = candidateRevision(slip);
+    const saving = setCandidateStake(slip.id, 750);
+    const record = await finalizeCandidate(slip.id, seen);
+
+    await saving;
+    expect(record.stakeCents).toBe(750);
+    expect(await stored(slip.id)).toMatchObject({ status: "placed", stakeCents: 750 });
+  });
+
+  it("BLUR RACE: an edit from another tab in the same window is still rejected", async () => {
+    const { slip } = await draftWithLeg();
+    const seen = candidateRevision(slip);
+    const saving = (await otherTab()).setCandidateStake(slip.id, 750);
+    const attempt = finalizeCandidate(slip.id, seen);
+
+    await saving;
+    await expect(attempt).rejects.toBeInstanceOf(StaleCandidateError);
+    expect(await stored(slip.id)).toMatchObject({ status: "draft", stakeCents: 750 });
+    expect(await listFinalizedParlays()).toHaveLength(0);
+  });
+
+  it("counts a chain of this tab's own saves as seen, even after they committed and before the view refreshed", async () => {
+    const { slip } = await draftWithLeg();
+    const seen = candidateRevision(slip);
+    await setCandidateStake(slip.id, 750);
+    await setCandidatePromo(slip.id, "Boost", 1000);
+
+    const record = await finalizeCandidate(slip.id, seen);
+    expect(record).toMatchObject({ stakeCents: 750, promoLabel: "Boost", promoMaxStakeCents: 1000 });
+  });
+
+  it("any edit from another tab breaks the chain, before or after this tab's own saves", async () => {
+    for (const order of ["own then other", "other then own"]) {
+      const { slip } = await draftWithLeg(order);
+      const seen = candidateRevision(slip);
+      const other = await otherTab();
+      if (order === "own then other") {
+        await setCandidateStake(slip.id, 750);
+        await other.renameCandidate(slip.id, "Renamed elsewhere");
+      } else {
+        await other.renameCandidate(slip.id, "Renamed elsewhere");
+        await setCandidateStake(slip.id, 750);
+      }
+      await expect(finalizeCandidate(slip.id, seen), order).rejects.toBeInstanceOf(StaleCandidateError);
     }
     expect(await listFinalizedParlays()).toHaveLength(0);
   });
