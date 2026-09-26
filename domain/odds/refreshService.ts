@@ -1,5 +1,6 @@
 import type { CandidateParlay, CapturedIdea, LiveContext } from "@/domain/types";
-import { getLiveContext, putLiveContext } from "@/storage/indexeddb/repositories/liveContextRepository";
+import { mergeLiveContextIfIdeaCurrent } from "@/storage/indexeddb/repositories/liveContextRepository";
+import { changesPriceIdentity } from "@/domain/ideas/ideaService";
 import { missingOddsRequestFields } from "./refreshability";
 
 type OddsApiOutcome = {
@@ -35,10 +36,15 @@ export type OddsEventOutcome = {
   ideaIds: string[];
   status: OddsApiResult["status"];
   warning: string | null;
-  /** True only when this event's fetch succeeded and oddsFetchedAt was renewed for its legs. */
+  /**
+   * True only when this event's fetch succeeded, so oddsFetchedAt was renewed
+   * for its legs, except those in changedIdeaIds, which got nothing.
+   */
   priceRefreshed: boolean;
   /** Legs of a successful fetch whose outcome couldn't be confirmed (price cleared, timestamp renewed). */
   unmatchedIdeaIds: string[];
+  /** Legs whose idea was edited (price identity changed) or deleted while this was in flight: nothing written (INV-13). */
+  changedIdeaIds: string[];
 };
 
 export type OddsRefreshResult = {
@@ -56,12 +62,22 @@ export type OddsRefreshResult = {
   skippedIdeaIds: string[];
   /** The subset of skippedIdeaIds whose idea no longer exists. */
   missingIdeaIds: string[];
+  /**
+   * Legs that WERE sent, but whose idea was edited (price identity changed) or
+   * deleted before the result could be written, so nothing was written for
+   * them: the price was fetched for a proposition the leg no longer is. All
+   * events' changedIdeaIds together. Not refreshed; a new refresh will fetch
+   * the edited proposition.
+   */
+  changedIdeaIds: string[];
 };
 
 export type PlayerStatusRefreshResult = {
   status: "ok" | "failed" | "nothing_to_refresh";
   attemptedAt: string;
   failure: RefreshRequestFailure | null;
+  /** As OddsRefreshResult.changedIdeaIds: the status was fetched for a player the leg no longer names. */
+  changedIdeaIds: string[];
 };
 
 export type CandidateRefreshResult = {
@@ -140,39 +156,53 @@ export function matchOutcome(idea: CapturedIdea, outcomes: OddsApiOutcome[]): Od
   return candidates.length === 1 ? candidates[0] : null;
 }
 
+/**
+ * Writes one refresh result onto the stored row for (idea, book), unless the
+ * idea is no longer the one the request was made for: if its price identity
+ * changed (changesPriceIdentity, the one definition) or it was deleted while
+ * the request was in flight, nothing is written and this resolves false
+ * (INV-13). The check and the write are one transaction, so an edit can't land
+ * between them. A cosmetic edit (note, confidence) doesn't change the identity,
+ * so the result is still written.
+ */
 async function mergeLiveContext(
-  ideaId: string,
+  fetchedFor: CapturedIdea,
   sportsbook: string,
   patch: Partial<LiveContext>,
-): Promise<void> {
-  const existing = await getLiveContext(ideaId, sportsbook);
-  // A patch without fetchedAt is a failed attempt: it must not make older data
-  // look freshly fetched, so the last fetchedAt is kept. Only a record created
-  // by a failed attempt (no prior data) is stamped with the attempt time.
-  const fetchedAt = patch.fetchedAt ?? existing?.fetchedAt ?? new Date().toISOString();
-  const merged: LiveContext = {
-    ideaId,
-    // The repository stores this under the canonical book id; the text is kept for display.
+): Promise<boolean> {
+  return mergeLiveContextIfIdeaCurrent(
+    fetchedFor.id,
     sportsbook,
-    sportsbookLabel: sportsbook.trim() || existing?.sportsbookLabel,
-    eventId: existing?.eventId ?? null,
-    currentLine: existing?.currentLine ?? null,
-    currentOddsAmerican: existing?.currentOddsAmerican ?? null,
-    marketAvailable: existing?.marketAvailable ?? null,
-    playerStatus: existing?.playerStatus ?? null,
-    depthChartPosition: existing?.depthChartPosition ?? null,
-    gameStatus: existing?.gameStatus ?? null,
-    scheduledStart: existing?.scheduledStart ?? null,
-    oddsFetchedAt: existing?.oddsFetchedAt ?? null,
-    oddsSource: existing?.oddsSource ?? null,
-    playerStatusFetchedAt: existing?.playerStatusFetchedAt ?? null,
-    playerStatusSource: existing?.playerStatusSource ?? null,
-    warnings: existing?.warnings ?? [],
-    ...patch,
-    fetchedAt,
-    source: patch.source ?? existing?.source ?? "unknown",
-  };
-  await putLiveContext(merged);
+    (current) => current !== undefined && !changesPriceIdentity(fetchedFor, current),
+    (existing) => {
+      // A patch without fetchedAt is a failed attempt: it must not make older data
+      // look freshly fetched, so the last fetchedAt is kept. Only a record created
+      // by a failed attempt (no prior data) is stamped with the attempt time.
+      const fetchedAt = patch.fetchedAt ?? existing?.fetchedAt ?? new Date().toISOString();
+      return {
+        ideaId: fetchedFor.id,
+        // The repository stores this under the canonical book id; the text is kept for display.
+        sportsbook,
+        sportsbookLabel: sportsbook.trim() || existing?.sportsbookLabel,
+        eventId: existing?.eventId ?? null,
+        currentLine: existing?.currentLine ?? null,
+        currentOddsAmerican: existing?.currentOddsAmerican ?? null,
+        marketAvailable: existing?.marketAvailable ?? null,
+        playerStatus: existing?.playerStatus ?? null,
+        depthChartPosition: existing?.depthChartPosition ?? null,
+        gameStatus: existing?.gameStatus ?? null,
+        scheduledStart: existing?.scheduledStart ?? null,
+        oddsFetchedAt: existing?.oddsFetchedAt ?? null,
+        oddsSource: existing?.oddsSource ?? null,
+        playerStatusFetchedAt: existing?.playerStatusFetchedAt ?? null,
+        playerStatusSource: existing?.playerStatusSource ?? null,
+        warnings: existing?.warnings ?? [],
+        ...patch,
+        fetchedAt,
+        source: patch.source ?? existing?.source ?? "unknown",
+      };
+    },
+  );
 }
 
 /**
@@ -185,6 +215,10 @@ async function mergeLiveContext(
  * that event's legs. A failed or not-found event keeps the last successful
  * price and timestamp and records only its own warning, so an old price can't
  * look freshly fetched.
+ *
+ * A leg whose idea was edited (price identity) or deleted while the request
+ * was in flight gets no write at all, and is reported in changedIdeaIds
+ * (INV-13): the result describes a proposition the leg no longer is.
  */
 export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas: CapturedIdea[]): Promise<OddsRefreshResult> {
   const attemptedAt = new Date().toISOString();
@@ -196,7 +230,15 @@ export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas:
   const missingIdeaIds = skippedIdeaIds.filter((id) => !ideas.some((idea) => idea.id === id));
 
   if (legs.length === 0) {
-    return { status: "nothing_to_refresh", attemptedAt, failure: null, events: [], skippedIdeaIds, missingIdeaIds };
+    return {
+      status: "nothing_to_refresh",
+      attemptedAt,
+      failure: null,
+      events: [],
+      skippedIdeaIds,
+      missingIdeaIds,
+      changedIdeaIds: [],
+    };
   }
 
   const failed = (failure: RefreshRequestFailure): OddsRefreshResult => ({
@@ -206,6 +248,7 @@ export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas:
     events: [],
     skippedIdeaIds,
     missingIdeaIds,
+    changedIdeaIds: [],
   });
 
   let response: Response;
@@ -248,6 +291,7 @@ export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas:
       warning: result.warning,
       priceRefreshed: result.status === "ok",
       unmatchedIdeaIds: [],
+      changedIdeaIds: [],
     };
     events.push(event);
     for (const ideaId of result.ideaIds) {
@@ -259,15 +303,15 @@ export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas:
         // marketAvailable is written only for not_found, which is an actual
         // observation; provider_error / not_configured observed nothing, so
         // they must not reset an earlier true/false to null.
-        await mergeLiveContext(ideaId, candidate.sportsbook, {
+        const written = await mergeLiveContext(idea, candidate.sportsbook, {
           eventId: idea.eventId,
           ...(result.status === "not_found" ? { marketAvailable: false } : {}),
           warnings,
         });
+        if (!written) event.changedIdeaIds.push(ideaId);
         continue;
       }
       const outcome = matchOutcome(idea, result.outcomes);
-      if (outcome === null) event.unmatchedIdeaIds.push(ideaId);
       // A bare unmatched outcome conflates four different situations. Only "the
       // market key isn't in this response at all" is positive evidence the book
       // doesn't list it (false); a listed market the matcher couldn't attach to
@@ -275,7 +319,7 @@ export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas:
       // selection/line) is a matcher limitation, not evidence of absence, so it
       // stays unknown (null) rather than false.
       const listed = result.outcomes.some((o) => o.marketKey === idea.marketKey);
-      await mergeLiveContext(ideaId, candidate.sportsbook, {
+      const written = await mergeLiveContext(idea, candidate.sportsbook, {
         eventId: idea.eventId,
         currentLine: outcome?.point ?? null,
         currentOddsAmerican: outcome?.priceAmerican ?? null,
@@ -294,6 +338,8 @@ export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas:
               ]
             : warnings,
       });
+      if (!written) event.changedIdeaIds.push(ideaId);
+      else if (outcome === null) event.unmatchedIdeaIds.push(ideaId);
     }
   }
 
@@ -306,7 +352,8 @@ export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas:
         : fetched === events.length
           ? "ok"
           : "partial";
-  return { status, attemptedAt, failure: null, events, skippedIdeaIds, missingIdeaIds };
+  const changedIdeaIds = events.flatMap((event) => event.changedIdeaIds);
+  return { status, attemptedAt, failure: null, events, skippedIdeaIds, missingIdeaIds, changedIdeaIds };
 }
 
 export async function refreshPlayerStatusForCandidate(
@@ -318,29 +365,35 @@ export async function refreshPlayerStatusForCandidate(
     .map((id) => ideas.find((idea) => idea.id === id))
     .filter((idea): idea is CapturedIdea => Boolean(idea && idea.playerId));
 
-  if (legs.length === 0) return { status: "nothing_to_refresh", attemptedAt, failure: null };
+  if (legs.length === 0) return { status: "nothing_to_refresh", attemptedAt, failure: null, changedIdeaIds: [] };
 
   const playerIds = [...new Set(legs.map((leg) => leg.playerId as string))];
   let response: Response;
   try {
     response = await fetch(`/api/sleeper?playerIds=${playerIds.join(",")}`);
   } catch (error) {
-    return { status: "failed", attemptedAt, failure: failureFromError(error) };
+    return { status: "failed", attemptedAt, failure: failureFromError(error), changedIdeaIds: [] };
   }
-  if (!response.ok) return { status: "failed", attemptedAt, failure: failureFromResponse(response) };
+  if (!response.ok) return { status: "failed", attemptedAt, failure: failureFromResponse(response), changedIdeaIds: [] };
 
   let body: { fetchedAt: string; players: Record<string, { status: string | null; depthChartPosition: string | null }> };
   try {
     body = await response.json();
   } catch {
-    return { status: "failed", attemptedAt, failure: { kind: "invalid_response", httpStatus: response.status } };
+    return {
+      status: "failed",
+      attemptedAt,
+      failure: { kind: "invalid_response", httpStatus: response.status },
+      changedIdeaIds: [],
+    };
   }
   const { fetchedAt, players } = body;
 
+  const changedIdeaIds: string[] = [];
   for (const idea of legs) {
     const player = players[idea.playerId as string];
     if (!player) continue;
-    await mergeLiveContext(idea.id, candidate.sportsbook, {
+    const written = await mergeLiveContext(idea, candidate.sportsbook, {
       playerStatus: player.status,
       depthChartPosition: player.depthChartPosition,
       playerStatusFetchedAt: fetchedAt,
@@ -348,8 +401,9 @@ export async function refreshPlayerStatusForCandidate(
       fetchedAt,
       source: "sleeper",
     });
+    if (!written) changedIdeaIds.push(idea.id);
   }
-  return { status: "ok", attemptedAt, failure: null };
+  return { status: "ok", attemptedAt, failure: null, changedIdeaIds };
 }
 
 /**
@@ -410,19 +464,31 @@ export function describeRefreshProblem(result: CandidateRefreshResult): string |
 }
 
 /**
- * A neutral note about legs the refresh didn't send because their ideas lack
- * a league, game or market, or null when there were none. This is a fact about
- * the slip (raw legs are allowed), not a failed refresh, so it is kept out of
- * describeRefreshProblem and must not be shown as an error. Without it a
- * refresh that sent nothing would look like it did nothing at all. Legs whose
- * idea was deleted are not counted: they aren't missing details.
+ * A neutral note about legs the refresh didn't update, or null when there
+ * were none: legs it didn't send because their ideas lack a league, game or
+ * market, and legs whose idea was edited or deleted while the refresh was in
+ * flight (their results weren't saved, INV-13). These are facts about the
+ * slip, not a failed refresh, so they are kept out of describeRefreshProblem
+ * and must not be shown as an error. Without the first, a refresh that sent
+ * nothing would look like it did nothing at all. Legs whose idea was deleted
+ * before the refresh are not counted: they aren't missing details.
  */
 export function describeRefreshNotice(result: CandidateRefreshResult): string | null {
-  const { odds } = result;
+  const { odds, playerStatus } = result;
+  const notes: string[] = [];
   const unrefreshable = odds.skippedIdeaIds.length - odds.missingIdeaIds.length;
-  if (unrefreshable <= 0) return null;
-  if (odds.status === "nothing_to_refresh") {
-    return "No odds to refresh: every leg still needs a league, game and market in its details.";
+  if (unrefreshable > 0) {
+    notes.push(
+      odds.status === "nothing_to_refresh"
+        ? "No odds to refresh: every leg still needs a league, game and market in its details."
+        : `${unrefreshable} leg${unrefreshable === 1 ? " was" : "s were"} skipped: ${unrefreshable === 1 ? "it needs" : "they need"} a league, game and market in the idea's details.`,
+    );
   }
-  return `${unrefreshable} leg${unrefreshable === 1 ? " was" : "s were"} skipped: ${unrefreshable === 1 ? "it needs" : "they need"} a league, game and market in the idea's details.`;
+  const changed = new Set([...odds.changedIdeaIds, ...playerStatus.changedIdeaIds]).size;
+  if (changed > 0) {
+    notes.push(
+      `${changed} leg${changed === 1 ? " was" : "s were"} edited during the refresh, so ${changed === 1 ? "its" : "their"} results weren't saved. Refresh again to update ${changed === 1 ? "it" : "them"}.`,
+    );
+  }
+  return notes.length > 0 ? notes.join(" ") : null;
 }

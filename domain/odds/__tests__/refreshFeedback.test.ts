@@ -3,6 +3,7 @@ import { IDBFactory } from "fake-indexeddb";
 import { describeRefreshNotice, describeRefreshProblem, refreshCandidateContext } from "../refreshService";
 import { captureInstantIdea } from "@/domain/ideas/ideaService";
 import { __setDBForTests } from "@/storage/indexeddb/db";
+import { putIdea } from "@/storage/indexeddb/repositories/ideasRepository";
 import type { CandidateParlay, CapturedIdea } from "@/domain/types";
 
 beforeEach(() => {
@@ -125,11 +126,12 @@ describe("describeRefreshProblem vs describeRefreshNotice", () => {
 
   it("a successful refresh that skipped raw legs: no error, the skip only as a note", async () => {
     stubOdds();
-    const result = await refreshCandidateContext(makeSlip(["full", "raw-1", "raw-2"]), [
-      makeIdea({ id: "full" }),
-      makeIdea({ id: "raw-1", eventId: null }),
-      makeIdea({ id: "raw-2", league: null }),
-    ]);
+    // Stored, as the app's ideas always are: a refresh writes only for an idea
+    // that still exists as it was sent (INV-13), so an unsaved one would be
+    // reported as changed.
+    const ideas = [makeIdea({ id: "full" }), makeIdea({ id: "raw-1", eventId: null }), makeIdea({ id: "raw-2", league: null })];
+    for (const idea of ideas) await putIdea(idea);
+    const result = await refreshCandidateContext(makeSlip(["full", "raw-1", "raw-2"]), ideas);
 
     expect(result.odds.status).toBe("ok");
     expect(describeRefreshProblem(result)).toBeNull();
