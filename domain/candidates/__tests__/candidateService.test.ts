@@ -11,6 +11,7 @@ import {
 } from "../candidateService";
 import { __setDBForTests } from "@/storage/indexeddb/db";
 import { DEFAULT_STAKE_CENTS } from "@/domain/types";
+import { captureInstantIdea } from "@/domain/ideas/ideaService";
 
 beforeEach(() => {
   (globalThis as unknown as { indexedDB: IDBFactory }).indexedDB = new IDBFactory();
@@ -71,5 +72,17 @@ describe("cloneCandidate", () => {
 
     const all = await listCandidates();
     expect(all).toHaveLength(2);
+  });
+});
+
+describe("adding legs is never gated on priceability (permanent control)", () => {
+  it("adds a raw needs_details idea to a slip on a book with no live odds", async () => {
+    const raw = await captureInstantIdea("Puka big game Sunday");
+    expect(raw.detailsStatus).toBe("needs_details");
+    const slip = await createCandidate("Sunday", "Bet365");
+
+    const updated = await addLegToCandidate(slip.id, raw.id);
+
+    expect(updated.ideaIds).toEqual([raw.id]);
   });
 });

@@ -13,11 +13,17 @@ import { AddIdeasSheet } from "@/components/AddIdeasSheet";
 import { PageShell } from "@/components/PageShell";
 import { BuildIcon, PlusIcon } from "@/components/icons";
 import { Button, TextInput } from "@/components/FormControls";
-import { calculateCombinedEstimate, calculatePayoutCents, hasSameGameCombination } from "@/domain/odds/estimate";
+import {
+  calculateCombinedEstimate,
+  calculatePayoutCents,
+  hasSameGameCombination,
+  legPriceInputs,
+} from "@/domain/odds/estimate";
+import { SportsbookSupportHint } from "@/components/SportsbookSupportHint";
 import { detectCorrelationSignals } from "@/domain/rules/correlation";
 import { detectConcentrationSignals } from "@/domain/rules/concentration";
 import { createCandidate, removeLegFromCandidate } from "@/domain/candidates/candidateService";
-import { refreshCandidateContext } from "@/domain/odds/refreshService";
+import { describeRefreshNotice, describeRefreshProblem, refreshCandidateContext } from "@/domain/odds/refreshService";
 import { liveContextKey } from "@/storage/indexeddb/repositories/liveContextRepository";
 
 function kickoffWindowFor(scheduledStart: string | null): string | null {
@@ -63,6 +69,7 @@ function FirstSlipPrompt() {
           Sportsbook
           <TextInput value={sportsbook} onChange={(e) => setSportsbook(e.target.value)} placeholder="FanDuel" autoFocus />
         </label>
+        <SportsbookSupportHint sportsbook={sportsbook} />
         <Button type="submit" disabled={!sportsbook.trim() || creating}>
           {creating ? "Creating…" : "Create slip"}
         </Button>
@@ -85,6 +92,7 @@ export default function BuilderPage() {
   const [expanded, setExpanded] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
   const [addingIdeas, setAddingIdeas] = useState(false);
 
   const candidate = candidates.find((c) => c.id === activeCandidateId) ?? null;
@@ -97,14 +105,8 @@ export default function BuilderPage() {
     ? candidate.ideaIds.map((id) => ideas.find((idea) => idea.id === id)).filter((v) => v !== undefined)
     : [];
 
-  const estimate = calculateCombinedEstimate(
-    legs.map((leg) => ({
-      ideaId: leg.id,
-      eventId: leg.eventId,
-      currentOddsAmerican: liveContextFor(leg.id)?.currentOddsAmerican ?? null,
-      captureOddsAmerican: leg.oddsAtCaptureAmerican,
-    })),
-  );
+  const estimate = calculateCombinedEstimate(legPriceInputs(legs, sportsbook, liveContextFor));
+  const unpricedLegCount = estimate.legSources.filter((leg) => leg.source === "unavailable").length;
 
   const payoutCents =
     estimate.ok && candidate ? calculatePayoutCents(candidate.stakeCents, estimate.decimalOdds) : null;
@@ -134,9 +136,12 @@ export default function BuilderPage() {
     if (!candidate || refreshing) return;
     setRefreshing(true);
     setRefreshError(null);
+    setRefreshNotice(null);
     try {
-      await refreshCandidateContext(candidate, ideas);
+      const result = await refreshCandidateContext(candidate, ideas);
       await refreshLiveContext();
+      setRefreshError(describeRefreshProblem(result));
+      setRefreshNotice(describeRefreshNotice(result));
     } catch (err) {
       setRefreshError(err instanceof Error ? err.message : "Could not refresh odds/status.");
     } finally {
@@ -163,6 +168,7 @@ export default function BuilderPage() {
               <span style={{ color: "var(--color-muted)" }}>
                 Sportsbook: <strong style={{ color: "var(--color-ink)" }}>{candidate.sportsbook}</strong>
               </span>
+              <SportsbookSupportHint sportsbook={candidate.sportsbook} />
               <Button
                 variant="secondary"
                 onClick={handleRefresh}
@@ -179,6 +185,10 @@ export default function BuilderPage() {
               {refreshError}
             </p>
           )}
+          {/* Always mounted so screen readers announce the note politely when it appears. */}
+          <p role="status" className="text-xs empty:hidden" style={{ color: "var(--color-muted)" }}>
+            {refreshNotice}
+          </p>
 
           {legs.length === 0 ? (
             <div className="flex flex-col items-center gap-4 rounded-[var(--radius-card)] border px-4 py-10 text-center" style={{ borderColor: "var(--color-border)" }}>
@@ -216,6 +226,7 @@ export default function BuilderPage() {
                 legCount={legs.length}
                 estimatedOddsAmerican={estimate.ok ? estimate.americanOdds : null}
                 estimatedPayoutCents={payoutCents}
+                unpricedLegCount={unpricedLegCount}
                 expanded={expanded}
                 onToggle={() => setExpanded((v) => !v)}
               />
@@ -228,6 +239,7 @@ export default function BuilderPage() {
                         key={leg.id}
                         idea={leg}
                         liveContext={liveContextFor(leg.id)}
+                        slipSportsbook={sportsbook}
                         onRemove={() => handleRemoveLeg(leg.id)}
                       />
                     ))}

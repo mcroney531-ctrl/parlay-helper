@@ -95,3 +95,39 @@ describe("buildChangeRadar", () => {
     }
   });
 });
+
+describe("buildChangeRadar: odds age and legs that can't be priced", () => {
+  const texts = (idea: CapturedIdea, live: LiveContext | undefined, blocked?: boolean) =>
+    buildChangeRadar(idea, live, blocked).map((entry) => entry.text);
+
+  it("a stored price with no fetch time has an unknown age, and a refresh is suggested when one can help", () => {
+    const entries = buildChangeRadar(makeIdea(), makeLiveContext({ oddsFetchedAt: null }));
+    expect(entries).toContainEqual({ kind: "stale", text: "Odds age unknown — refresh to update." });
+    expect(texts(makeIdea(), makeLiveContext({ oddsFetchedAt: null }))).not.toContain("No odds fetched yet for this leg.");
+  });
+
+  it("the same price on a leg that can't be priced doesn't suggest a refresh", () => {
+    const result = texts(makeIdea(), makeLiveContext({ oddsFetchedAt: null }), true);
+    expect(result).toContain("Odds age unknown.");
+    expect(result.join(" ")).not.toMatch(/refresh/i);
+  });
+
+  it("no price and no fetch time (a Sleeper-only row) still reads 'No odds fetched yet'", () => {
+    expect(texts(makeIdea(), makeLiveContext({ oddsFetchedAt: null, currentOddsAmerican: null, currentLine: null }))).toContain(
+      "No odds fetched yet for this leg.",
+    );
+  });
+
+  it("a leg that can't be priced gets no 'not fetched yet' lines, because a refresh wouldn't fix them", () => {
+    expect(buildChangeRadar(makeIdea({ eventId: null }), undefined, true)).toEqual([]);
+    expect(texts(makeIdea(), makeLiveContext({ oddsFetchedAt: null, currentOddsAmerican: null, currentLine: null }), true)).not.toContain(
+      "No odds fetched yet for this leg.",
+    );
+  });
+
+  it("a refreshable leg that was never fetched is unchanged", () => {
+    expect(buildChangeRadar(makeIdea(), undefined, false)).toEqual([
+      { kind: "not_found", text: "No current data fetched yet for this leg." },
+    ]);
+  });
+});

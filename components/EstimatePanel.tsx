@@ -51,6 +51,12 @@ export function EstimatePanel({
         <p className="mt-2 text-xs font-medium" style={{ color: "var(--color-danger)" }}>
           Estimate cannot be calculated — {estimate.unavailableLegIds.length} leg(s) have no capture or current
           price.
+          {(() => {
+            const notOffered = estimate.legSources.filter((l) => l.unavailableReason === "market_not_offered").length;
+            return notOffered > 0
+              ? ` ${notOffered} of those ${notOffered === 1 ? "is" : "are"} not currently offered by this sportsbook.`
+              : "";
+          })()}
         </p>
       )}
       {!estimate.ok && estimate.reason === "no_legs" && (
@@ -63,6 +69,14 @@ export function EstimatePanel({
           {estimate.legSources.filter((l) => l.source === "capture").length > 0
             ? "Some legs use capture-time price — current price unavailable for those legs."
             : "Using current prices for all legs."}
+          {(() => {
+            const otherBook = estimate.legSources.filter(
+              (l) => l.source === "capture" && l.captureBook?.match !== "same",
+            ).length;
+            return otherBook > 0
+              ? ` ${otherBook} of those ${otherBook === 1 ? "was" : "were"} captured at a sportsbook that is unrecorded or not confirmed to match this slip's.`
+              : "";
+          })()}
         </p>
       )}
     </Card>

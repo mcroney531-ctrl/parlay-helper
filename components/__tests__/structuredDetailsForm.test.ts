@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isEssentiallyComplete, type StructuredFormValues } from "../StructuredDetailsForm";
+import { isEssentiallyComplete, valuesToPatch, type StructuredFormValues } from "../StructuredDetailsForm";
 
 function makeValues(overrides: Partial<StructuredFormValues> = {}): StructuredFormValues {
   return {
@@ -35,5 +35,24 @@ describe("isEssentiallyComplete", () => {
 
   it("is true once both market and selection are set, even without a line", () => {
     expect(isEssentiallyComplete(makeValues({ marketKey: "player_anytime_td", selection: "yes" }))).toBe(true);
+  });
+});
+
+describe("valuesToPatch numeric fields", () => {
+  it("keeps real numbers and turns blank input into null", () => {
+    expect(valuesToPatch(makeValues({ lineAtCapture: "63.5", oddsAtCaptureAmerican: "-110" }))).toMatchObject({
+      lineAtCapture: 63.5,
+      oddsAtCaptureAmerican: -110,
+    });
+    expect(valuesToPatch(makeValues({ lineAtCapture: " ", oddsAtCaptureAmerican: "" }))).toMatchObject({
+      lineAtCapture: null,
+      oddsAtCaptureAmerican: null,
+    });
+  });
+
+  it.each(["abc", "Infinity", "-Infinity", "1e999", "NaN"])("turns non-finite input %j into null, never NaN or Infinity", (raw) => {
+    const patch = valuesToPatch(makeValues({ lineAtCapture: raw, oddsAtCaptureAmerican: raw }));
+    expect(patch.lineAtCapture).toBeNull();
+    expect(patch.oddsAtCaptureAmerican).toBeNull();
   });
 });

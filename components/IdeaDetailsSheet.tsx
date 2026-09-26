@@ -24,6 +24,23 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+/**
+ * What picking a game fills in. The game says nothing about which side the
+ * player is on, so a blank Team is never guessed (defaulting to either side is
+ * wrong for every player on the other one). Opponent is filled only when Team
+ * already names one side exactly; anything the user entered is kept.
+ */
+export function teamFieldsForPickedEvent(
+  team: string,
+  opponent: string,
+  event: { homeTeam: string; awayTeam: string },
+): { opponent?: string } {
+  if (opponent.trim()) return {};
+  if (team.trim() === event.homeTeam) return { opponent: event.awayTeam };
+  if (team.trim() === event.awayTeam) return { opponent: event.homeTeam };
+  return {};
+}
+
 export function IdeaDetailsSheet({
   idea,
   onClose,
@@ -88,9 +105,11 @@ export function IdeaDetailsSheet({
     }
   }
 
-  function handleKeyDownCapture(e: React.KeyboardEvent) {
-    // Only close the whole sheet on Escape if a nested combobox didn't
-    // already consume it (those call stopPropagation when they do).
+  function handleKeyDown(e: React.KeyboardEvent) {
+    // Bubble phase on purpose: an open player/game suggestion list handles
+    // Escape first and calls stopPropagation, so Escape closes that list and
+    // only reaches here (closing the sheet) when no list is open. A capture
+    // listener would run before the list and discard unsaved edits.
     if (e.key === "Escape") onClose();
   }
 
@@ -105,7 +124,7 @@ export function IdeaDetailsSheet({
       tabIndex={-1}
       className="fixed inset-0 z-50 flex flex-col outline-none"
       style={{ background: "var(--color-surface)" }}
-      onKeyDownCapture={handleKeyDownCapture}
+      onKeyDown={handleKeyDown}
     >
       <div
         className="flex items-center justify-between border-b px-4 py-3"
@@ -209,8 +228,8 @@ export function IdeaDetailsSheet({
                   league={values.league}
                   onChange={(id, meta) => {
                     set("eventId", id);
-                    if (meta && !values.team.trim()) set("team", meta.awayTeam);
-                    if (meta && !values.opponent.trim()) set("opponent", meta.homeTeam);
+                    const filled = meta ? teamFieldsForPickedEvent(values.team, values.opponent, meta) : {};
+                    if (filled.opponent !== undefined) set("opponent", filled.opponent);
                   }}
                 />
               </Field>

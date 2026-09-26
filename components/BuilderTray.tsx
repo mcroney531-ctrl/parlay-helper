@@ -16,12 +16,15 @@ export function BuilderTray({
   legCount,
   estimatedOddsAmerican,
   estimatedPayoutCents,
+  unpricedLegCount,
   expanded,
   onToggle,
 }: {
   legCount: number;
   estimatedOddsAmerican: number | null;
   estimatedPayoutCents: number | null;
+  /** Legs with neither a current nor a capture price. Any at all means there is no estimate, so the tray says why. */
+  unpricedLegCount: number;
   expanded: boolean;
   onToggle: () => void;
 }) {
@@ -45,10 +48,18 @@ export function BuilderTray({
           {legCount} leg{legCount === 1 ? "" : "s"}
         </span>
         <span className="flex items-center gap-3 text-sm">
-          <span className="font-display text-lg" style={{ color: "var(--color-brand)" }}>
-            {formatAmerican(estimatedOddsAmerican)}
-          </span>
-          <span style={{ color: "var(--color-muted)" }}>{formatCents(estimatedPayoutCents)}</span>
+          {unpricedLegCount > 0 ? (
+            <span className="text-xs font-medium" style={{ color: "var(--color-missing-fg)" }}>
+              {unpricedLegCount} of {legCount} leg{legCount === 1 ? "" : "s"} {unpricedLegCount === 1 ? "has" : "have"} no price
+            </span>
+          ) : (
+            <>
+              <span className="font-display text-lg" style={{ color: "var(--color-brand)" }}>
+                {formatAmerican(estimatedOddsAmerican)}
+              </span>
+              <span style={{ color: "var(--color-muted)" }}>{formatCents(estimatedPayoutCents)}</span>
+            </>
+          )}
           <ChevronDownIcon
             className="h-4 w-4 transition-transform"
             style={{ transform: expanded ? "rotate(180deg)" : "none", color: "var(--color-muted)" }}

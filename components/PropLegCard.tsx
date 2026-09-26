@@ -1,7 +1,8 @@
 "use client";
 
 import type { CapturedIdea, LiveContext } from "@/domain/types";
-import { buildChangeRadar } from "@/domain/odds/changeRadar";
+import { buildChangeRadar, type ChangeRadarEntry } from "@/domain/odds/changeRadar";
+import { describePriceBlockers, priceBlockers } from "@/domain/odds/refreshability";
 import { PlayerAvatar } from "@/components/PlayerAvatar";
 import { sleeperHeadshotUrl } from "@/components/sleeperImage";
 import { Pill } from "@/components/StatusChip";
@@ -9,10 +10,12 @@ import { AlertCircleIcon } from "@/components/icons";
 import { teamColorsFor } from "@/components/teamColors";
 import { Button } from "@/components/FormControls";
 
-const RADAR_TONE: Record<string, string> = {
+// Keyed by the entry kind so a new kind without a tone is a compile error, not a silent grey line.
+const RADAR_TONE: Record<ChangeRadarEntry["kind"], string> = {
   ok: "var(--color-muted)",
   line_change: "var(--color-info)",
   odds_change: "var(--color-info)",
+  cross_book: "var(--color-info)",
   status_change: "var(--color-caution-fg)",
   game_change: "var(--color-caution-fg)",
   stale: "var(--color-caution-fg)",
@@ -22,13 +25,17 @@ const RADAR_TONE: Record<string, string> = {
 export function PropLegCard({
   idea,
   liveContext,
+  slipSportsbook,
   onRemove,
 }: {
   idea: CapturedIdea;
   liveContext: LiveContext | undefined;
+  slipSportsbook: string;
   onRemove: () => void;
 }) {
-  const radar = buildChangeRadar(idea, liveContext);
+  const blockers = priceBlockers(idea, slipSportsbook);
+  const blockedText = describePriceBlockers(blockers, slipSportsbook);
+  const radar = buildChangeRadar(idea, liveContext, blockers.length > 0);
   const marketLine = [idea.marketLabel, idea.selection].filter((v) => v !== null && v !== undefined && v !== "").join(" · ");
   const colors = teamColorsFor(idea.team);
 
@@ -68,11 +75,17 @@ export function PropLegCard({
           )}
 
           <ul className="mt-1 flex flex-col gap-0.5">
+            {blockedText && (
+              <li className="flex items-start gap-1.5 text-sm font-medium" style={{ color: "var(--color-missing-fg)" }}>
+                <AlertCircleIcon className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{blockedText}</span>
+              </li>
+            )}
             {radar.map((entry, i) => (
               <li
                 key={i}
                 className="flex items-start gap-1.5 text-sm font-medium"
-                style={{ color: RADAR_TONE[entry.kind] ?? "var(--color-muted)" }}
+                style={{ color: RADAR_TONE[entry.kind] }}
               >
                 {entry.kind === "not_found" && <AlertCircleIcon className="mt-0.5 h-4 w-4 shrink-0" />}
                 <span>{entry.text}</span>

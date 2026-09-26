@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { matchOutcome } from "../refreshService";
+import { changesPriceIdentity } from "@/domain/ideas/ideaService";
 import type { CapturedIdea } from "@/domain/types";
 
 function makeIdea(overrides: Partial<CapturedIdea> = {}): CapturedIdea {
@@ -81,5 +82,26 @@ describe("matchOutcome — player identity", () => {
       outcomes,
     );
     expect(match).toMatchObject({ name: "Over", point: 47.5 });
+  });
+});
+
+describe("matchOutcome — selection normalization", () => {
+  const totals = [
+    { marketKey: "totals", name: "Over", description: null, point: 47.5, priceAmerican: -110 },
+    { marketKey: "totals", name: "Under", description: null, point: 47.5, priceAmerican: -105 },
+  ];
+  const totalsIdea = (selection: string) =>
+    makeIdea({ marketKey: "totals", playerName: null, selection, lineAtCapture: null });
+
+  it("ignores surrounding whitespace in the selection, as it ignores case", () => {
+    expect(matchOutcome(totalsIdea(" Over "), totals)).toMatchObject({ name: "Over", priceAmerican: -110 });
+    expect(matchOutcome(totalsIdea("under\t"), totals)).toMatchObject({ name: "Under", priceAmerican: -105 });
+  });
+
+  it("prices two selections the same whenever changesPriceIdentity calls them the same proposition", () => {
+    for (const [a, b] of [["Over", " over "], ["UNDER", "under"], ["Over", "Over  "]]) {
+      expect(changesPriceIdentity(totalsIdea(a), totalsIdea(b))).toBe(false);
+      expect(matchOutcome(totalsIdea(a), totals)).toEqual(matchOutcome(totalsIdea(b), totals));
+    }
   });
 });
