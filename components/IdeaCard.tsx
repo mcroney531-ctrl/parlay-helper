@@ -139,7 +139,7 @@ export function IdeaCard({ idea, variant }: { idea: CapturedIdea; variant: "comp
                 className="flex-1 rounded-[var(--radius-control)] px-3 py-1.5 text-center text-sm font-semibold text-white"
                 style={{ background: "var(--color-action)" }}
               >
-                Start a slip
+                {otherCandidates.length > 0 ? "Pick a slip" : "Start a slip"}
               </Link>
             )}
           </div>

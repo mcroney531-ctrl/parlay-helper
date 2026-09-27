@@ -12,7 +12,8 @@ import { FinalizeSection } from "@/components/FinalizeSection";
 import { AddIdeasSheet } from "@/components/AddIdeasSheet";
 import { PageShell } from "@/components/PageShell";
 import { BuildIcon, PlusIcon } from "@/components/icons";
-import { Button, TextInput } from "@/components/FormControls";
+import { Button } from "@/components/FormControls";
+import { NoCurrentSlip } from "@/components/NoCurrentSlip";
 import {
   calculateCombinedEstimate,
   calculatePayoutCents,
@@ -22,7 +23,7 @@ import {
 import { SportsbookSupportHint } from "@/components/SportsbookSupportHint";
 import { detectCorrelationSignals } from "@/domain/rules/correlation";
 import { detectConcentrationSignals } from "@/domain/rules/concentration";
-import { createCandidate, removeLegFromCandidate } from "@/domain/candidates/candidateService";
+import { removeLegFromCandidate } from "@/domain/candidates/candidateService";
 import { candidateRevision } from "@/domain/candidates/candidateState";
 import { describeRefreshNotice, describeRefreshProblem, refreshCandidateContext } from "@/domain/odds/refreshService";
 import { liveContextKey } from "@/storage/indexeddb/repositories/liveContextRepository";
@@ -32,51 +33,6 @@ function kickoffWindowFor(scheduledStart: string | null): string | null {
   const date = new Date(scheduledStart);
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString().slice(0, 13); // hour-granularity bucket
-}
-
-function FirstSlipPrompt() {
-  const { refreshCandidates, setActiveCandidateId } = useData();
-  const [name, setName] = useState("Sunday Core");
-  const [sportsbook, setSportsbook] = useState("");
-  const [creating, setCreating] = useState(false);
-
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    if (!sportsbook.trim() || creating) return;
-    setCreating(true);
-    try {
-      const candidate = await createCandidate(name, sportsbook);
-      await refreshCandidates();
-      setActiveCandidateId(candidate.id);
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  return (
-    <div className="flex flex-col items-center gap-4 rounded-[var(--radius-card)] border px-4 py-10 text-center" style={{ borderColor: "var(--color-border)" }}>
-      <p className="text-base font-semibold" style={{ color: "var(--color-ink)" }}>
-        Start your first slip
-      </p>
-      <p className="max-w-xs text-sm" style={{ color: "var(--color-muted)" }}>
-        A slip is book-specific — pick the sportsbook you&rsquo;ll actually place this on.
-      </p>
-      <form onSubmit={handleCreate} className="flex w-full max-w-xs flex-col gap-3">
-        <label className="flex flex-col gap-1 text-left text-xs font-semibold" style={{ color: "var(--color-muted)" }}>
-          Name
-          <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="Sunday Core" />
-        </label>
-        <label className="flex flex-col gap-1 text-left text-xs font-semibold" style={{ color: "var(--color-muted)" }}>
-          Sportsbook
-          <TextInput value={sportsbook} onChange={(e) => setSportsbook(e.target.value)} placeholder="FanDuel" autoFocus />
-        </label>
-        <SportsbookSupportHint sportsbook={sportsbook} />
-        <Button type="submit" disabled={!sportsbook.trim() || creating}>
-          {creating ? "Creating…" : "Create slip"}
-        </Button>
-      </form>
-    </div>
-  );
 }
 
 export default function BuilderPage() {
@@ -157,7 +113,7 @@ export default function BuilderPage() {
           Loading…
         </p>
       ) : !candidate ? (
-        <FirstSlipPrompt />
+        <NoCurrentSlip />
       ) : (
         <div
           className="flex flex-col gap-4"
@@ -257,7 +213,14 @@ export default function BuilderPage() {
 
                   <PromoAndStakePanel candidate={candidate} />
 
-                  <FinalizeSection candidateId={candidate.id} seenRevision={candidateRevision(candidate)} legCount={legs.length} />
+                  {/* Keyed by slip, so the optional confirmation fields never carry over from one slip to another. */}
+                  <FinalizeSection
+                    key={candidate.id}
+                    candidateId={candidate.id}
+                    slipName={candidate.name}
+                    seenRevision={candidateRevision(candidate)}
+                    legCount={legs.length}
+                  />
                 </div>
               )}
             </>

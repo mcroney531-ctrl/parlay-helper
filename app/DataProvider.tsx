@@ -6,7 +6,7 @@ import { listIdeas } from "@/domain/ideas/ideaService";
 import { listCandidates } from "@/domain/candidates/candidateService";
 import { listFinalizedParlays } from "@/domain/history/finalizeService";
 import { getAllLiveContext, liveContextKey } from "@/storage/indexeddb/repositories/liveContextRepository";
-import { resolveActiveCandidateId } from "@/domain/candidates/activeCandidate";
+import { noCurrentSlipBecausePlaced, resolveActiveCandidateId } from "@/domain/candidates/activeCandidate";
 import { nextDatabaseNotice, subscribeToDatabaseNotices } from "@/storage/indexeddb/db";
 
 type DataContextValue = {
@@ -30,15 +30,19 @@ type DataContextValue = {
   refreshFinalized: () => Promise<void>;
   refreshLiveContext: () => Promise<void>;
   /**
-   * The "current slip" — one candidate treated as the default target for
-   * "add to slip" across Capture/Bucket/Builder. Falls back to the most
-   * recently updated candidate when nothing's explicitly chosen yet or the
-   * remembered one no longer exists (deleted); null only when there are no
-   * candidates at all.
+   * The "current slip" — one DRAFT treated as the default target for "add to
+   * slip" across Capture/Bucket/Builder (see resolveActiveCandidateId). Never
+   * a placed slip. Null right after a placement (the pointer is
+   * NO_CURRENT_SLIP) until the user picks or starts a slip, and when there is
+   * no draft at all; otherwise it falls back to the most recently updated
+   * draft when nothing is remembered or the remembered one was deleted.
    */
   activeCandidateId: string | null;
+  /** Remembers the current slip. Pass NO_CURRENT_SLIP right after a placement. */
   setActiveCandidateId: (id: string | null) => void;
   activeCandidate: CandidateParlay | null;
+  /** True when there is no current slip because the last one was placed (not merely because there's no draft). */
+  lastSlipPlaced: boolean;
 };
 
 const DataContext = createContext<DataContextValue | null>(null);
@@ -139,6 +143,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     [candidates, activeCandidateId],
   );
 
+  const lastSlipPlaced = useMemo(
+    () => noCurrentSlipBecausePlaced(candidates, activeCandidateIdRaw),
+    [candidates, activeCandidateIdRaw],
+  );
+
   const value = useMemo(
     () => ({
       ideas,
@@ -156,6 +165,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       activeCandidateId,
       setActiveCandidateId,
       activeCandidate,
+      lastSlipPlaced,
     }),
     [
       ideas,
@@ -173,6 +183,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       activeCandidateId,
       setActiveCandidateId,
       activeCandidate,
+      lastSlipPlaced,
     ],
   );
 
