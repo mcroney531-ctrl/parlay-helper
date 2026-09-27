@@ -11,11 +11,17 @@ import {
 } from "@/storage/indexeddb/repositories/liveContextRepository";
 import { allocateRefreshAttempt } from "@/storage/indexeddb/repositories/metaRepository";
 
-// Same-identity refresh ordering (Phase 3 chunk 2). Invariant: an EARLIER
-// refresh attempt must never overwrite the committed result of a LATER refresh
-// attempt for the same idea identity. Attempts are ordered by when they
-// started (a number taken before the request goes out), not by when their
-// responses arrive. Distinct from INV-13, which is about identity changes.
+// Same-identity refresh ordering (Phase 3 chunk 2). Invariant, AS CORRECTED
+// (GPT, adopting B's refinement): for the same idea identity, an older market
+// observation must never overwrite a newer market observation. Attempts that
+// fail before observing market state don't take part in the ordering: the
+// absence of knowledge shouldn't outrank a real observation.
+//   successful fetch      -> observation, advances the stamp
+//   genuine not_found     -> observation, advances the stamp
+//   provider/network error -> not an observation, doesn't advance the stamp
+//   identity changed/deleted -> nothing written (INV-13)
+// Attempts are still ordered by when they STARTED (a number taken before the
+// request goes out), not by when their responses arrive. Distinct from INV-13.
 
 beforeEach(() => {
   (globalThis as unknown as { indexedDB: IDBFactory }).indexedDB = new IDBFactory();
@@ -243,26 +249,71 @@ describe("an earlier refresh attempt never overwrites a later attempt's committe
     expect(await row(idea.id)).toMatchObject({ currentOddsAmerican: -110 });
   });
 
-  it("strictly by attempt: a later attempt's committed FAILED result (provider error) also isn't overwritten by an earlier success", async () => {
-    // Pinned deliberately (flagged for review): the invariant speaks of the
-    // later attempt's committed result, and a provider error's result is 'keep
-    // the last price, with this warning'. The earlier success is dropped; the
-    // next refresh fetches again.
+  /** Starts two odds refreshes (the earlier one first) and returns their held requests. */
+  async function twoAttempts(idea: CapturedIdea) {
     const net = controlledFetch();
-    const idea = await puka();
-
     const earlier = refreshOddsForCandidate(slip([idea.id]), [idea]);
     const [first] = await net.requested(1);
     const later = refreshOddsForCandidate(slip([idea.id]), [idea]);
     const [, second] = await net.requested(2);
+    return { earlier, later, first, second };
+  }
+
+  it("B's pin (a): a newer provider error, then an older success: the success IS written (an error observed nothing)", async () => {
+    const idea = await puka();
+    const { earlier, later, first, second } = await twoAttempts(idea);
 
     second.respond(oddsResponse(second, 0, "provider_error"));
+    const laterResult = await later;
+    first.respond(oddsResponse(first, -110));
+    const earlierResult = await earlier;
+
+    expect(laterResult.supersededIdeaIds).toEqual([]);
+    expect(earlierResult.supersededIdeaIds).toEqual([]);
+    expect(await row(idea.id)).toMatchObject({ currentOddsAmerican: -110, marketAvailable: true, warnings: [] });
+  });
+
+  it("B's pin (b): a newer genuine not_found, then an older success: blocked, the market stays unavailable", async () => {
+    const idea = await puka();
+    const { earlier, later, first, second } = await twoAttempts(idea);
+
+    second.respond(oddsResponse(second, 0, "not_found"));
     await later;
     first.respond(oddsResponse(first, -110));
     const earlierResult = await earlier;
 
+    // Ordered by real information, not by preferring good news over bad.
     expect(earlierResult.supersededIdeaIds).toEqual([idea.id]);
-    expect(await row(idea.id)).toMatchObject({ currentOddsAmerican: null, warnings: ["provider trouble"] });
+    expect(await row(idea.id)).toMatchObject({ currentOddsAmerican: null, marketAvailable: false });
+  });
+
+  it("B's pin (c): a newer success, then an older provider error: blocked, no stale error crowds out the fresh price", async () => {
+    const idea = await puka();
+    const { earlier, later, first, second } = await twoAttempts(idea);
+
+    second.respond(oddsResponse(second, -150));
+    await later;
+    first.respond(oddsResponse(first, 0, "provider_error"));
+    const earlierResult = await earlier;
+
+    expect(earlierResult.supersededIdeaIds).toEqual([idea.id]);
+    expect(await row(idea.id)).toMatchObject({ currentOddsAmerican: -150, warnings: [] });
+  });
+
+  it("a newer provider error doesn't advance the stamp; the older success that lands after it does", async () => {
+    const idea = await puka();
+    const { earlier, later, first, second } = await twoAttempts(idea);
+
+    second.respond(oddsResponse(second, 0, "provider_error"));
+    await later;
+    expect((await row(idea.id))?.oddsAttempt).toBeUndefined();
+    first.respond(oddsResponse(first, -110));
+    await earlier;
+
+    const stored = await row(idea.id);
+    expect(stored?.oddsAttempt).toBeDefined();
+    // The stored observation is the earlier attempt's, so its stamp is the smaller number.
+    expect(stored?.oddsAttempt).toBeLessThan(await allocateRefreshAttempt());
   });
 
   it("an older attempt for a proposition that has since been edited is reported as changed, not superseded", async () => {
@@ -285,7 +336,7 @@ describe("mergeLiveContextIfIdeaCurrent's ordering rule, directly", () => {
   it("only a strictly later stored attempt supersedes: the same attempt may write the same row again", async () => {
     const idea = await puka();
     const write = (seq: number, price: number) =>
-      mergeLiveContextIfIdeaCurrent(idea.id, "FanDuel", { source: "odds", seq }, () => true, (existing) => ({
+      mergeLiveContextIfIdeaCurrent(idea.id, "FanDuel", { source: "odds", seq, observation: true }, () => true, (existing) => ({
         ...(existing as LiveContext),
         ideaId: idea.id,
         sportsbook: "FanDuel",
@@ -297,6 +348,25 @@ describe("mergeLiveContextIfIdeaCurrent's ordering rule, directly", () => {
     expect(await write(4, -130)).toBe("superseded");
     expect(await write(6, -140)).toBe("written");
     expect(await row(idea.id)).toMatchObject({ currentOddsAmerican: -140, oddsAttempt: 6 });
+  });
+
+  it("a non-observation is still blocked by a newer observation, but never advances the stamp", async () => {
+    const idea = await puka();
+    const write = (seq: number, observation: boolean, warnings: string[]) =>
+      mergeLiveContextIfIdeaCurrent(idea.id, "FanDuel", { source: "odds", seq, observation }, () => true, (existing) => ({
+        ...(existing as LiveContext),
+        ideaId: idea.id,
+        sportsbook: "FanDuel",
+        warnings,
+      }));
+
+    expect(await write(5, true, [])).toBe("written");
+    expect(await write(4, false, ["stale error"])).toBe("superseded");
+    expect(await write(7, false, ["newer error"])).toBe("written");
+    expect(await row(idea.id)).toMatchObject({ oddsAttempt: 5, warnings: ["newer error"] });
+    // So an observation between the two still lands.
+    expect(await write(6, true, [])).toBe("written");
+    expect(await row(idea.id)).toMatchObject({ oddsAttempt: 6 });
   });
 });
 

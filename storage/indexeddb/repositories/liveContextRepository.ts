@@ -115,13 +115,20 @@ function toStored(context: LiveContext): LiveContext {
   };
 }
 
-/** Which half of a row a refresh writes, and the attempt it came from (allocateRefreshAttempt). */
-export type RefreshAttempt = { source: "odds" | "playerStatus"; seq: number };
+/**
+ * One refresh write: which half of the row it writes, the attempt it came from
+ * (allocateRefreshAttempt, taken when the attempt started), and whether it is
+ * a market OBSERVATION. A successful fetch and a genuine not_found (the book
+ * doesn't list the market) are observations; a provider/network/transport
+ * error observed nothing about the market and is not.
+ */
+export type RefreshAttempt = { source: "odds" | "playerStatus"; seq: number; observation: boolean };
 
 /**
  * written: the result was stored. idea-changed: the idea's price identity
- * changed, or it was deleted, since the request (INV-13). superseded: a later
- * refresh attempt's result for this half of the row is already stored.
+ * changed, or it was deleted, since the request (INV-13). superseded: a newer
+ * market observation (from a refresh that started later) is already stored
+ * for this half of the row.
  */
 export type RefreshWriteOutcome = "written" | "idea-changed" | "superseded";
 
@@ -130,12 +137,23 @@ export type RefreshWriteOutcome = "written" | "idea-changed" | "superseded";
  * transaction over ideas and liveContext, and only if:
  * - the idea is still the one it was fetched for (`stillCurrent`; INV-13),
  *   else nothing is written ("idea-changed"); and
- * - no LATER refresh attempt's result is already stored for this half of the
- *   row (odds or player status), else nothing is written ("superseded"): an
- *   earlier attempt never overwrites a later attempt's committed result, even
- *   when its response arrives last.
- * Otherwise the row becomes `build(existing)`, stamped with this attempt for
- * its half; the other half's stamp is kept as it was.
+ * - the row doesn't already hold a NEWER market observation for this half
+ *   (odds or player status): the observation stamp (oddsAttempt /
+ *   playerStatusAttempt) names the attempt whose observation is stored, and if
+ *   it is later than this attempt nothing is written ("superseded"). This
+ *   holds for every write, so a stale error can't crowd out a fresh price
+ *   either.
+ * Otherwise the row becomes `build(existing)`. Only an OBSERVATION advances
+ * this half's stamp to this attempt; a non-observation (an error: warnings
+ * only) is written without touching it, so it can never block an older
+ * attempt's real observation that arrives after it. The other half's stamp is
+ * always kept as it was.
+ *
+ * The invariant (Phase 3 chunk 2, as corrected): for the same idea identity,
+ * an older market observation never overwrites a newer market observation.
+ * Attempts that fail before observing market state don't take part in the
+ * ordering, because the absence of knowledge shouldn't outrank a real
+ * observation.
  *
  * Because the idea edit (updateIdeaWithLiveContext) is also one transaction
  * over both stores, the two can't interleave, and because the attempt check
@@ -171,7 +189,7 @@ export async function mergeLiveContextIfIdeaCurrent(
     // The stamps are kept here, not left to `build`, so no caller can drop them.
     if (existing?.oddsAttempt !== undefined) next.oddsAttempt = existing.oddsAttempt;
     if (existing?.playerStatusAttempt !== undefined) next.playerStatusAttempt = existing.playerStatusAttempt;
-    next[stampField] = attempt.seq;
+    if (attempt.observation) next[stampField] = attempt.seq;
     await store.put(toStored(next));
     await tx.done;
     return "written";

@@ -179,10 +179,12 @@ export function matchOutcome(idea: CapturedIdea, outcomes: OddsApiOutcome[]): Od
  *   deleted while the request was in flight ("idea-changed", INV-13). A
  *   cosmetic edit (note, confidence) doesn't change the identity, so the
  *   result is still written; or
- * - a refresh attempt that started LATER has already stored its result for
- *   the same half of the row ("superseded"): an earlier attempt never
- *   overwrites a later attempt's committed result, whichever response arrives
- *   last.
+ * - a NEWER market observation (from a refresh that started later) is already
+ *   stored for the same half of the row ("superseded"): an older observation
+ *   never overwrites a newer one, whichever response arrives last. Only an
+ *   observation (a successful fetch, or a genuine not_found) advances the
+ *   row's stamp; an error observed nothing and never blocks an older real
+ *   observation.
  * Both checks and the write are one transaction (mergeLiveContextIfIdeaCurrent).
  */
 async function mergeLiveContext(
@@ -277,7 +279,7 @@ export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas:
 
   // Taken before the request goes out, so it orders this attempt by when it
   // STARTED relative to other refreshes, not by when its response arrives.
-  const attempt: RefreshAttempt = { source: "odds", seq: await allocateRefreshAttempt() };
+  const attempt = { source: "odds" as const, seq: await allocateRefreshAttempt() };
 
   let response: Response;
   try {
@@ -332,7 +334,10 @@ export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas:
         // marketAvailable is written only for not_found, which is an actual
         // observation; provider_error / not_configured observed nothing, so
         // they must not reset an earlier true/false to null.
-        const outcome = await mergeLiveContext(idea, candidate.sportsbook, attempt, {
+        // A genuine not_found is an observation (the book doesn't list the
+        // market); a provider error or unconfigured book observed nothing.
+        const observation = result.status === "not_found";
+        const outcome = await mergeLiveContext(idea, candidate.sportsbook, { ...attempt, observation }, {
           eventId: idea.eventId,
           ...(result.status === "not_found" ? { marketAvailable: false } : {}),
           warnings,
@@ -349,7 +354,7 @@ export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas:
       // selection/line) is a matcher limitation, not evidence of absence, so it
       // stays unknown (null) rather than false.
       const listed = result.outcomes.some((o) => o.marketKey === idea.marketKey);
-      const written = await mergeLiveContext(idea, candidate.sportsbook, attempt, {
+      const written = await mergeLiveContext(idea, candidate.sportsbook, { ...attempt, observation: true }, {
         eventId: idea.eventId,
         currentLine: outcome?.point ?? null,
         currentOddsAmerican: outcome?.priceAmerican ?? null,
@@ -402,7 +407,8 @@ export async function refreshPlayerStatusForCandidate(
 
   const playerIds = [...new Set(legs.map((leg) => leg.playerId as string))];
   // Taken before the request goes out: see refreshOddsForCandidate.
-  const attempt: RefreshAttempt = { source: "playerStatus", seq: await allocateRefreshAttempt() };
+  // Every player-status write is an observation: failures return before writing anything.
+  const attempt: RefreshAttempt = { source: "playerStatus", seq: await allocateRefreshAttempt(), observation: true };
   let response: Response;
   try {
     response = await fetch(`/api/sleeper?playerIds=${playerIds.join(",")}`);

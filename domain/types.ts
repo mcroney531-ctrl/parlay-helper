@@ -67,13 +67,14 @@ export type LiveContext = {
   oddsSource: string | null;
   playerStatusFetchedAt: string | null;
   playerStatusSource: string | null;
-  // The refresh attempt whose result each half of this row holds (see
-  // allocateRefreshAttempt). A result from an EARLIER attempt never overwrites
-  // one from a later attempt. Optional: rows written before these existed have
-  // none, which reads as 0 (older than every attempt).
-  /** Attempt number of the odds refresh whose result this row holds. */
+  // The refresh attempt whose MARKET OBSERVATION each half of this row holds
+  // (see allocateRefreshAttempt and mergeLiveContextIfIdeaCurrent). An older
+  // observation never overwrites a newer one; an error that observed nothing
+  // doesn't move these. Optional: rows written before these existed have none,
+  // which reads as 0 (older than every attempt).
+  /** Attempt number of the refresh whose odds observation this row holds. */
   oddsAttempt?: number;
-  /** Attempt number of the player-status refresh whose result this row holds. */
+  /** Attempt number of the refresh whose player-status observation this row holds. */
   playerStatusAttempt?: number;
 };
 
