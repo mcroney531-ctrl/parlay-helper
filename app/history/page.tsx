@@ -11,7 +11,9 @@ import { Pill } from "@/components/StatusChip";
 import { PlayerAvatar } from "@/components/PlayerAvatar";
 import { sleeperHeadshotUrl } from "@/components/sleeperImage";
 import { SearchIcon } from "@/components/icons";
-import type { FinalizedParlay } from "@/domain/types";
+import type { CandidateParlay, FinalizedParlay } from "@/domain/types";
+import { placedSlipFor } from "@/domain/history/placedSlip";
+import { PlacedSlipActions } from "@/components/PlacedSlipActions";
 
 function formatAmerican(value: number | null): string {
   if (value === null) return "—";
@@ -25,7 +27,18 @@ function formatCents(cents: number | null): string {
 
 const PREVIEW_LEG_COUNT = 3;
 
-function FinalizedCard({ parlay, expanded, onToggle }: { parlay: FinalizedParlay; expanded: boolean; onToggle: () => void }) {
+function FinalizedCard({
+  parlay,
+  slip,
+  expanded,
+  onToggle,
+}: {
+  parlay: FinalizedParlay;
+  /** The placed slip this record came from, if it still exists (placedSlipFor); null for legacy and orphaned records. */
+  slip: CandidateParlay | null;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
   const shownLegs = expanded ? parlay.legSnapshots : parlay.legSnapshots.slice(0, PREVIEW_LEG_COUNT);
   const remaining = parlay.legSnapshots.length - shownLegs.length;
   const hasActual = parlay.actualSportsbookOddsAmerican !== null || parlay.actualSportsbookPayoutCents !== null;
@@ -114,12 +127,13 @@ function FinalizedCard({ parlay, expanded, onToggle }: { parlay: FinalizedParlay
           Show fewer legs
         </button>
       )}
+      {expanded && slip && <PlacedSlipActions slip={slip} />}
     </Card>
   );
 }
 
 export default function HistoryPage() {
-  const { finalized, loading } = useData();
+  const { finalized, candidates, loading } = useData();
   const [search, setSearch] = useState("");
   const [sportsbookFilter, setSportsbookFilter] = useState("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -212,6 +226,7 @@ export default function HistoryPage() {
               <li key={parlay.id}>
                 <FinalizedCard
                   parlay={parlay}
+                  slip={placedSlipFor(parlay, candidates)}
                   expanded={effectiveExpandedId === parlay.id}
                   onToggle={() => setExpandedId(effectiveExpandedId === parlay.id ? "" : parlay.id)}
                 />

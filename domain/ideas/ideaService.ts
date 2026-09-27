@@ -4,8 +4,8 @@ import {
   getAllIdeas,
   getIdea,
   putIdea,
+  updateIdeaWithLiveContext,
 } from "@/storage/indexeddb/repositories/ideasRepository";
-import { deleteLiveContextForIdea } from "@/storage/indexeddb/repositories/liveContextRepository";
 import { parseRawText } from "./parseRawText";
 
 function newId(): string {
@@ -153,24 +153,25 @@ export async function updateIdeaDetails(
   id: string,
   patch: Partial<Omit<CapturedIdea, "id" | "rawText" | "createdAt">>,
 ): Promise<CapturedIdea> {
-  const existing = await getIdea(id);
-  if (!existing) {
-    throw new Error(`Idea ${id} not found`);
-  }
-  const merged: CapturedIdea = {
-    ...existing,
-    ...patch,
-    id: existing.id,
-    rawText: existing.rawText,
-    createdAt: existing.createdAt,
-    updatedAt: nowISO(),
-  };
-  merged.detailsStatus = isStructuredEnough(merged) ? "structured" : "needs_details";
-  // Cleared before the idea is saved: if the save then fails, all that's lost
-  // is a disposable cache, never a stale price left on the edited idea.
-  if (changesPriceIdentity(existing, merged)) await deleteLiveContextForIdea(id);
-  await putIdea(merged);
-  return merged;
+  // One transaction: the edited idea is saved and, if its price identity
+  // changed, its cached live context is cleared, together or not at all. A
+  // refresh write for the old proposition therefore either lands before the
+  // edit (and is cleared by it) or after it (and is skipped: INV-13).
+  return updateIdeaWithLiveContext(id, (existing) => {
+    if (!existing) {
+      throw new Error(`Idea ${id} not found`);
+    }
+    const merged: CapturedIdea = {
+      ...existing,
+      ...patch,
+      id: existing.id,
+      rawText: existing.rawText,
+      createdAt: existing.createdAt,
+      updatedAt: nowISO(),
+    };
+    merged.detailsStatus = isStructuredEnough(merged) ? "structured" : "needs_details";
+    return { idea: merged, clearLiveContext: changesPriceIdentity(existing, merged) };
+  });
 }
 
 export async function archiveIdea(id: string): Promise<void> {

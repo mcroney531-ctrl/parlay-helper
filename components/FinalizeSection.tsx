@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { finalizeCandidate } from "@/domain/history/finalizeService";
+import { AlreadyPlacedError, CandidateNotFoundError, StaleCandidateError } from "@/domain/candidates/errors";
+import { NO_CURRENT_SLIP } from "@/domain/candidates/activeCandidate";
 import { useData } from "@/app/DataProvider";
 import { Card } from "@/components/Card";
 import { Button, TextArea, TextInput } from "@/components/FormControls";
@@ -16,30 +18,103 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-export function FinalizeSection({ candidateId, legCount }: { candidateId: string; legCount: number }) {
+/**
+ * What happens once a placement has committed, pulled out of the click
+ * handler so it can be tested without a DOM. The placed slip is no longer
+ * current whatever the pointer says (INV-7); storing NO_CURRENT_SLIP (rather
+ * than clearing it) makes the Slip screen ask what's next instead of silently
+ * switching to some other draft. Then the new state is loaded and History,
+ * where the placed slip now lives, is opened.
+ */
+export async function completePlacement(deps: {
+  setActiveCandidateId: (id: string | null) => void;
+  refreshCandidates: () => Promise<void>;
+  refreshFinalized: () => Promise<void>;
+  navigate: (href: string) => void;
+}): Promise<void> {
+  deps.setActiveCandidateId(NO_CURRENT_SLIP);
+  await Promise.all([deps.refreshCandidates(), deps.refreshFinalized()]);
+  deps.navigate("/history");
+}
+
+/**
+ * The confirm step before a slip is placed (INV-1: placing is permanent, so a
+ * mis-tap is caught here rather than undone later). Pure, so it can be
+ * rendered on its own in tests.
+ */
+export function MarkPlacedConfirm({
+  slipName,
+  saving,
+  onConfirm,
+  onCancel,
+}: {
+  slipName: string;
+  saving: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div role="group" aria-label="Confirm Mark Placed" className="flex flex-col gap-2 rounded-[var(--radius-control)] border p-3" style={{ borderColor: "var(--color-border)" }}>
+      <p className="text-sm font-semibold" style={{ color: "var(--color-ink)" }}>
+        Mark &ldquo;{slipName}&rdquo; as placed?
+      </p>
+      <p className="text-xs" style={{ color: "var(--color-muted)" }}>
+        It moves to History as a permanent record and can&rsquo;t be edited or placed again. To bet it again, clone it
+        from History.
+      </p>
+      <div className="flex gap-2">
+        <Button onClick={onConfirm} disabled={saving} className="flex-1">
+          {saving ? "Placing…" : "Yes, mark placed"}
+        </Button>
+        <Button variant="secondary" onClick={onCancel} disabled={saving}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export function FinalizeSection({
+  candidateId,
+  slipName,
+  seenRevision,
+  legCount,
+}: {
+  candidateId: string;
+  slipName: string;
+  /** The revision of the candidate as rendered: placement is rejected if it changed since (INV-6). */
+  seenRevision: number;
+  legCount: number;
+}) {
   const router = useRouter();
-  const { refreshFinalized } = useData();
+  const { refreshCandidates, refreshFinalized, setActiveCandidateId } = useData();
   const [actualOdds, setActualOdds] = useState("");
   const [actualPayout, setActualPayout] = useState("");
   const [betId, setBetId] = useState("");
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleFinalize() {
     setSaving(true);
     setError(null);
     try {
-      await finalizeCandidate(candidateId, {
+      await finalizeCandidate(candidateId, seenRevision, {
         actualSportsbookOddsAmerican: actualOdds.trim() ? Number(actualOdds) : null,
         actualSportsbookPayoutCents: actualPayout.trim() ? Math.round(parseFloat(actualPayout) * 100) : null,
         sportsbookBetId: betId,
         note,
       });
-      await refreshFinalized();
-      router.push("/history");
+      await completePlacement({ setActiveCandidateId, refreshCandidates, refreshFinalized, navigate: router.push });
     } catch (err) {
+      // The slip on screen is out of date: reload it so what's shown matches
+      // what's stored before the user tries again.
+      if (err instanceof AlreadyPlacedError || err instanceof StaleCandidateError || err instanceof CandidateNotFoundError) {
+        await Promise.all([refreshCandidates(), refreshFinalized()]);
+      }
       setError(err instanceof Error ? err.message : "Could not finalize.");
+      setConfirming(false);
     } finally {
       setSaving(false);
     }
@@ -72,9 +147,13 @@ export function FinalizeSection({ candidateId, legCount }: { candidateId: string
         </div>
       </details>
 
-      <Button onClick={handleFinalize} disabled={saving || legCount === 0} className="w-full">
-        {saving ? "Finalizing…" : "Finalize / Mark Placed"}
-      </Button>
+      {confirming ? (
+        <MarkPlacedConfirm slipName={slipName} saving={saving} onConfirm={handleFinalize} onCancel={() => setConfirming(false)} />
+      ) : (
+        <Button onClick={() => setConfirming(true)} disabled={legCount === 0} className="w-full">
+          Mark Placed
+        </Button>
+      )}
       {legCount === 0 && (
         <p className="text-xs" style={{ color: "var(--color-muted)" }}>
           Add at least one leg before finalizing.

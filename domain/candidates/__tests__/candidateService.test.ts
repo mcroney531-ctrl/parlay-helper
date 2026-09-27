@@ -10,6 +10,7 @@ import {
   setCandidateStake,
 } from "../candidateService";
 import { __setDBForTests } from "@/storage/indexeddb/db";
+import { putCandidate } from "@/storage/indexeddb/repositories/candidatesRepository";
 import { DEFAULT_STAKE_CENTS } from "@/domain/types";
 import { captureInstantIdea } from "@/domain/ideas/ideaService";
 
@@ -84,5 +85,31 @@ describe("adding legs is never gated on priceability (permanent control)", () =>
     const updated = await addLegToCandidate(slip.id, raw.id);
 
     expect(updated.ideaIds).toEqual([raw.id]);
+  });
+});
+
+describe("schema v3 fields on new and cloned slips", () => {
+  it("writes status 'draft' and revision 0 explicitly on a new slip, so a missing field means a pre-v3 record", async () => {
+    const created = await createCandidate("Sunday", "FanDuel");
+    expect(created).toMatchObject({ status: "draft", revision: 0 });
+    expect("placedAt" in created).toBe(false);
+    const [stored] = await listCandidates();
+    expect(stored).toMatchObject({ status: "draft", revision: 0 });
+  });
+
+  it("clones a placed slip as a fresh draft at revision 0 with no placedAt, leaving the source unchanged", async () => {
+    const source = await createCandidate("Sunday", "FanDuel");
+    await addLegToCandidate(source.id, "idea-1");
+    const placedSource = { ...(await listCandidates())[0], status: "placed" as const, placedAt: "2026-09-26T12:00:00.000Z", revision: 5 };
+    await putCandidate(placedSource);
+
+    const clone = await cloneCandidate(source.id);
+
+    expect(clone.id).not.toBe(source.id);
+    expect(clone).toMatchObject({ status: "draft", revision: 0, ideaIds: ["idea-1"], sportsbook: "FanDuel" });
+    expect("placedAt" in clone).toBe(false);
+    const stored = await listCandidates();
+    expect(stored.find((c) => c.id === clone.id)).toEqual(clone);
+    expect(stored.find((c) => c.id === source.id)).toEqual(placedSource);
   });
 });

@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import type { CandidateParlay } from "@/domain/types";
 import { cloneCandidate, createCandidate, deleteCandidate, renameCandidate } from "@/domain/candidates/candidateService";
+import { isPlaced } from "@/domain/candidates/candidateState";
 import { useData } from "@/app/DataProvider";
 import { Button, TextInput } from "@/components/FormControls";
 import { PlusIcon } from "@/components/icons";
@@ -59,7 +60,7 @@ export function CandidateSwitcher({
     await deleteCandidate(candidate.id);
     await refreshCandidates();
     if (activeId === candidate.id) {
-      const remaining = candidates.filter((c) => c.id !== candidate.id);
+      const remaining = candidates.filter((c) => c.id !== candidate.id && !isPlaced(c));
       onSelect(remaining[0]?.id ?? "");
     }
   }
@@ -67,7 +68,8 @@ export function CandidateSwitcher({
   return (
     <div className="flex flex-col gap-2">
       <div role="tablist" aria-label="Candidate parlays" className="flex items-center gap-2 overflow-x-auto pb-1">
-        {candidates.map((candidate) => (
+        {/* Placed slips are never the current slip (INV-7), so they aren't offered as one. */}
+        {candidates.filter((c) => !isPlaced(c)).map((candidate) => (
           <button
             key={candidate.id}
             role="tab"

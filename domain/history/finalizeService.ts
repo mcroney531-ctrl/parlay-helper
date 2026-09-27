@@ -1,13 +1,23 @@
-import type { FinalizedLegSnapshot, FinalizedParlay } from "@/domain/types";
-import { calculateCombinedEstimate, calculatePayoutCents } from "@/domain/odds/estimate";
+import type { CapturedIdea, FinalizedLegSnapshot, FinalizedParlay } from "@/domain/types";
+import {
+  calculateCombinedEstimate,
+  calculatePayoutCents,
+  legPriceInputs,
+  snapshotLegPrice,
+} from "@/domain/odds/estimate";
 import { isValidAmericanOdds } from "@/domain/odds/conversion";
-import { getCandidate } from "@/storage/indexeddb/repositories/candidatesRepository";
-import { getIdea } from "@/storage/indexeddb/repositories/ideasRepository";
-import { getLiveContext } from "@/storage/indexeddb/repositories/liveContextRepository";
+import { candidateRevision, isPlaced } from "@/domain/candidates/candidateState";
+import { AlreadyPlacedError, CandidateNotFoundError, StaleCandidateError } from "@/domain/candidates/errors";
+import { revisionsSeenFrom, settleOwnEdits } from "@/domain/candidates/ownEdits";
 import {
   getAllFinalizedParlays,
-  putFinalizedParlay,
+  getFinalizedIdForCandidate,
 } from "@/storage/indexeddb/repositories/finalizedRepository";
+import {
+  commitPlacement,
+  type PlacementReads,
+  type PlacementWrite,
+} from "@/storage/indexeddb/repositories/placementRepository";
 
 function newId(): string {
   return crypto.randomUUID();
@@ -20,16 +30,35 @@ export type FinalizeOptions = {
   note?: string;
 };
 
+/**
+ * Places a candidate: writes its finalized record and marks it placed, in one
+ * transaction (INV-5). `seenRevision` is the candidate revision the user was
+ * looking at when they confirmed (candidateRevision of the candidate they saw).
+ * Inside the transaction the placement is rejected, with nothing written, if
+ * the candidate is gone (CandidateNotFoundError), already placed
+ * (AlreadyPlacedError, carrying the existing record's id), or changed since
+ * that revision (StaleCandidateError) -- it never places legs, a sportsbook, a
+ * stake or a promo other than the ones the user confirmed (INV-6).
+ *
+ * One exception keeps a same-tab save from counting as a change: placement
+ * first waits for this tab's in-flight edits to the candidate, and accepts the
+ * revisions this tab produced from `seenRevision` as seen (the user typed a
+ * stake and tapped Mark Placed, whose tap saved the stake). An edit made
+ * anywhere else still makes it stale. See domain/candidates/ownEdits.ts.
+ *
+ * Ideas and live context are read inside the same transaction, and whatever is
+ * stored at commit time is what's recorded; nothing is fetched here. A price
+ * refreshed after the user's view is fine to use, because the snapshot records
+ * the price itself.
+ */
 export async function finalizeCandidate(
   candidateId: string,
+  seenRevision: number,
   options: FinalizeOptions = {},
 ): Promise<FinalizedParlay> {
-  const candidate = await getCandidate(candidateId);
-  if (!candidate) {
-    throw new Error(`Candidate ${candidateId} not found`);
-  }
-  if (candidate.ideaIds.length === 0) {
-    throw new Error("Cannot finalize a candidate with no legs");
+  // INV-4: '' is a valid key for the unique index, so it must never be stored.
+  if (!candidateId) {
+    throw new Error("Cannot finalize without a candidate id.");
   }
   if (options.actualSportsbookOddsAmerican != null && !isValidAmericanOdds(options.actualSportsbookOddsAmerican)) {
     throw new Error("Actual odds must be a valid American price (e.g. +150 or -110).");
@@ -41,22 +70,77 @@ export async function finalizeCandidate(
     throw new Error("Actual payout must be a non-negative amount.");
   }
 
-  const legSnapshots: FinalizedLegSnapshot[] = [];
-  const estimateInputs = [];
-  const missingIdeaIds: string[] = [];
+  // Outside the transaction: waiting on anything but an IDB request inside it
+  // would commit it early. Snapshotted here, so an edit started after this
+  // point is not counted as seen.
+  await settleOwnEdits(candidateId);
+  const seenRevisions = revisionsSeenFrom(candidateId, seenRevision);
 
-  for (const ideaId of candidate.ideaIds) {
-    const idea = await getIdea(ideaId);
-    if (!idea) {
-      missingIdeaIds.push(ideaId);
-      continue;
+  try {
+    return await commitPlacement(candidateId, (reads) =>
+      planPlacement(candidateId, seenRevision, seenRevisions, options, reads),
+    );
+  } catch (error) {
+    // The unique by-candidateId index refused a second record for this
+    // candidate (INV-3's second guard); the transaction aborted, so nothing
+    // was written.
+    if (error instanceof DOMException && error.name === "ConstraintError") {
+      throw new AlreadyPlacedError(candidateId, (await getFinalizedIdForCandidate(candidateId)) ?? null);
     }
-    const liveContext = await getLiveContext(ideaId, candidate.sportsbook);
-    // A market the book no longer offers has no price or line to record: what is
-    // still stored is the last-known value, not what the slip would have been placed at.
-    const marketOffered = liveContext?.marketAvailable !== false;
+    throw error;
+  }
+}
 
-    legSnapshots.push({
+/**
+ * Decides the placement from what the transaction read. Synchronous: it runs
+ * inside the transaction (see commitPlacement). Throws to reject.
+ */
+function planPlacement(
+  candidateId: string,
+  seenRevision: number,
+  seenRevisions: Set<number>,
+  options: FinalizeOptions,
+  { candidate, existingFinalizedId, ideas, liveContexts }: PlacementReads,
+): PlacementWrite {
+  if (!candidate) {
+    throw new CandidateNotFoundError(candidateId);
+  }
+  if (isPlaced(candidate)) {
+    throw new AlreadyPlacedError(candidateId, existingFinalizedId ?? null);
+  }
+  if (!seenRevisions.has(candidateRevision(candidate))) {
+    throw new StaleCandidateError(candidateId, seenRevision, candidateRevision(candidate));
+  }
+  if (candidate.ideaIds.length === 0) {
+    throw new Error("Cannot finalize a candidate with no legs");
+  }
+
+  const missingIdeaIds = candidate.ideaIds.filter((ideaId) => !ideas.has(ideaId));
+  if (missingIdeaIds.length > 0) {
+    throw new Error(
+      `Cannot finalize: ${missingIdeaIds.length} leg(s) reference an idea that no longer exists (${missingIdeaIds.join(", ")}). Remove them from the candidate first.`,
+    );
+  }
+  const legs = candidate.ideaIds.map((ideaId) => ideas.get(ideaId) as CapturedIdea);
+
+  // INV-12: each leg's price is resolved ONCE, by the same resolver and from
+  // the same inputs as the builder's estimate, and that one resolution is both
+  // what the saved estimate multiplies and what the leg's snapshot records.
+  const estimate = calculateCombinedEstimate(
+    legPriceInputs(legs, candidate.sportsbook, (ideaId) => liveContexts.get(ideaId)),
+  );
+  const estimatedOddsAmerican = estimate.ok ? estimate.americanOdds : null;
+  const estimatedPayoutCents = estimate.ok
+    ? calculatePayoutCents(candidate.stakeCents, estimate.decimalOdds)
+    : null;
+
+  const legSnapshots: FinalizedLegSnapshot[] = legs.map((idea, index) => {
+    const resolved = estimate.legSources[index];
+    // The live price and line at the slip's book, only when the leg was priced
+    // from it: a market the book no longer offers keeps its last-known value
+    // in live context, but that isn't what the slip was placed at.
+    const live = resolved.source === "current";
+    return {
       ideaId: idea.id,
       playerId: idea.playerId,
       playerName: idea.playerName,
@@ -67,36 +151,17 @@ export async function finalizeCandidate(
       selection: idea.selection,
       lineAtCapture: idea.lineAtCapture,
       oddsAtCaptureAmerican: idea.oddsAtCaptureAmerican,
-      lineAtFinalize: marketOffered ? (liveContext?.currentLine ?? null) : null,
-      oddsAtFinalizeAmerican: marketOffered ? (liveContext?.currentOddsAmerican ?? null) : null,
+      lineAtFinalize: live ? resolved.line : null,
+      oddsAtFinalizeAmerican: live ? resolved.oddsAmerican : null,
       sportsbookAtCapture: idea.sportsbookAtCapture,
-    });
+      price: snapshotLegPrice(resolved, candidate.sportsbook),
+    };
+  });
 
-    estimateInputs.push({
-      ideaId: idea.id,
-      eventId: idea.eventId,
-      currentOddsAmerican: liveContext?.currentOddsAmerican ?? null,
-      captureOddsAmerican: idea.oddsAtCaptureAmerican,
-      captureSportsbook: idea.sportsbookAtCapture,
-      slipSportsbook: candidate.sportsbook,
-      marketAvailable: liveContext?.marketAvailable ?? null,
-    });
-  }
-
-  if (missingIdeaIds.length > 0) {
-    throw new Error(
-      `Cannot finalize: ${missingIdeaIds.length} leg(s) reference an idea that no longer exists (${missingIdeaIds.join(", ")}). Remove them from the candidate first.`,
-    );
-  }
-
-  const estimate = calculateCombinedEstimate(estimateInputs);
-  const estimatedOddsAmerican = estimate.ok ? estimate.americanOdds : null;
-  const estimatedPayoutCents = estimate.ok
-    ? calculatePayoutCents(candidate.stakeCents, estimate.decimalOdds)
-    : null;
-
+  const finalizedAt = new Date().toISOString();
   const finalized: FinalizedParlay = {
     id: newId(),
+    candidateId,
     candidateName: candidate.name,
     sportsbook: candidate.sportsbook,
     legSnapshots,
@@ -109,11 +174,19 @@ export async function finalizeCandidate(
     promoMaxStakeCents: candidate.promoMaxStakeCents,
     sportsbookBetId: options.sportsbookBetId ?? "",
     note: options.note ?? "",
-    finalizedAt: new Date().toISOString(),
+    finalizedAt,
   };
 
-  await putFinalizedParlay(finalized);
-  return finalized;
+  return {
+    finalized,
+    candidate: {
+      ...candidate,
+      status: "placed",
+      placedAt: finalizedAt,
+      updatedAt: finalizedAt,
+      revision: candidateRevision(candidate) + 1,
+    },
+  };
 }
 
 export async function listFinalizedParlays(): Promise<FinalizedParlay[]> {

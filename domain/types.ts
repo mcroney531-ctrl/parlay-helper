@@ -69,6 +69,8 @@ export type LiveContext = {
   playerStatusSource: string | null;
 };
 
+export type CandidateStatus = "draft" | "placed";
+
 export type CandidateParlay = {
   id: string;
   name: string;
@@ -79,7 +81,55 @@ export type CandidateParlay = {
   promoMaxStakeCents: number | null;
   createdAt: string;
   updatedAt: string;
+  // The three fields below arrived with schema v3 and are optional for the
+  // same reason as FinalizedLegSnapshot.playerId: every candidate saved before
+  // v3 has no such keys, and the migration deliberately doesn't rewrite them.
+  // Read them through domain/candidates/candidateState, never directly.
+  /** Absent reads as "draft". Only ever moves draft -> placed. */
+  status?: CandidateStatus;
+  /** When the candidate was placed; equals its finalized record's finalizedAt. */
+  placedAt?: string;
+  /**
+   * Edit counter: the "version the user saw" that placement checks against.
+   * Absent reads as 0. Every edit to the candidate increments it.
+   */
+  revision?: number;
 };
+
+/**
+ * Where a saved leg's price came from, from the one price resolver (INV-12):
+ * the price the leg was placed at and its provenance. The estimate saved on
+ * the same record was computed from these same resolutions.
+ */
+export type SnapshotLegPrice =
+  | {
+      /** The live price at the slip's book. */
+      source: "current";
+      oddsAmerican: number;
+      line: number | null;
+      /** The slip's book, as the slip names it. */
+      book: string | null;
+      /** When that live price was fetched; null if unknown. */
+      oddsFetchedAt: string | null;
+    }
+  | {
+      /** The capture price, used because no live price was stored. */
+      source: "capture";
+      oddsAmerican: number;
+      line: number | null;
+      /** The book the capture price was observed at (the idea's sportsbookAtCapture), as typed; null if unknown. */
+      book: string | null;
+      /** How that book compares to the slip's: a capture price from another book is never the slip book's price. */
+      bookMatch: "same" | "different" | "unverified" | "unknown";
+    }
+  | {
+      /** No price: nothing stored, or the slip's book no longer offers the market. */
+      source: "unavailable";
+      oddsAmerican: null;
+      line: null;
+      book: null;
+      unavailableReason?: "market_not_offered";
+    };
 
 export type FinalizedLegSnapshot = {
   ideaId: string;
@@ -96,13 +146,28 @@ export type FinalizedLegSnapshot = {
   selection: string | null;
   lineAtCapture: number | null;
   oddsAtCaptureAmerican: number | null;
+  /** The live line at the slip's book at placement; null unless the leg was priced from a live price. */
   lineAtFinalize: number | null;
+  /** The live price at the slip's book at placement; null unless the leg was priced from a live price. */
   oddsAtFinalizeAmerican: number | null;
   sportsbookAtCapture: string | null;
+  /**
+   * The price this leg was placed at and where it came from (INV-12). Optional
+   * for the same reason as playerId: records saved before it existed have no
+   * such key, and nothing is inferred for them.
+   */
+  price?: SnapshotLegPrice;
 };
 
 export type FinalizedParlay = {
   id: string;
+  /**
+   * The candidate this record placed. Present and non-empty on every record
+   * written from schema v3 on; absent on older records, which are never
+   * linked after the fact (their candidate is not inferred). May name a
+   * candidate that has since been deleted.
+   */
+  candidateId?: string;
   candidateName: string;
   sportsbook: string;
   legSnapshots: FinalizedLegSnapshot[];

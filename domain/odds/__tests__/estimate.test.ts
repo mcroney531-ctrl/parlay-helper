@@ -5,6 +5,7 @@ import {
   groupLegsByEvent,
   legPriceInputs,
   resolveLegPrice,
+  snapshotLegPrice,
 } from "../estimate";
 import type { CapturedIdea, LiveContext } from "@/domain/types";
 
@@ -99,21 +100,127 @@ describe("groupLegsByEvent", () => {
 });
 
 describe("legPriceInputs", () => {
-  const idea = (id: string, capture: number | null, book: string | null) =>
-    ({ id, eventId: `evt-${id}`, oddsAtCaptureAmerican: capture, sportsbookAtCapture: book }) as CapturedIdea;
+  const idea = (id: string, capture: number | null, book: string | null, line: number | null) =>
+    ({ id, eventId: `evt-${id}`, oddsAtCaptureAmerican: capture, sportsbookAtCapture: book, lineAtCapture: line }) as CapturedIdea;
 
   it("builds each leg's resolver input from the idea and that leg's live context at the slip's book", () => {
-    const live = { a: { currentOddsAmerican: -120, marketAvailable: true } as LiveContext };
+    const live = {
+      a: { currentOddsAmerican: -120, currentLine: 64.5, oddsFetchedAt: "2026-09-26T12:00:00.000Z", marketAvailable: true } as LiveContext,
+    };
     const lookedUp: string[] = [];
-    const inputs = legPriceInputs([idea("a", -110, "FanDuel"), idea("b", 150, null)], "DraftKings", (ideaId) => {
+    const inputs = legPriceInputs([idea("a", -110, "FanDuel", 63.5), idea("b", 150, null, null)], "DraftKings", (ideaId) => {
       lookedUp.push(ideaId);
       return live[ideaId as "a"];
     });
 
     expect(lookedUp).toEqual(["a", "b"]);
-    expect(inputs).toEqual([
-      { ideaId: "a", eventId: "evt-a", currentOddsAmerican: -120, captureOddsAmerican: -110, captureSportsbook: "FanDuel", slipSportsbook: "DraftKings", marketAvailable: true },
-      { ideaId: "b", eventId: "evt-b", currentOddsAmerican: null, captureOddsAmerican: 150, captureSportsbook: null, slipSportsbook: "DraftKings", marketAvailable: null },
+    expect(inputs).toStrictEqual([
+      {
+        ideaId: "a",
+        eventId: "evt-a",
+        currentOddsAmerican: -120,
+        currentLine: 64.5,
+        currentOddsFetchedAt: "2026-09-26T12:00:00.000Z",
+        captureOddsAmerican: -110,
+        captureLine: 63.5,
+        captureSportsbook: "FanDuel",
+        slipSportsbook: "DraftKings",
+        marketAvailable: true,
+      },
+      {
+        ideaId: "b",
+        eventId: "evt-b",
+        currentOddsAmerican: null,
+        currentLine: null,
+        currentOddsFetchedAt: null,
+        captureOddsAmerican: 150,
+        captureLine: null,
+        captureSportsbook: null,
+        slipSportsbook: "DraftKings",
+        marketAvailable: null,
+      },
     ]);
+  });
+});
+
+describe("resolveLegPrice carries what a saved leg records (INV-12)", () => {
+  const base = { ideaId: "a", eventId: "evt-a", slipSportsbook: "DraftKings" };
+
+  it("a live price carries its line and fetch time", () => {
+    expect(
+      resolveLegPrice({
+        ...base,
+        currentOddsAmerican: -120,
+        currentLine: 64.5,
+        currentOddsFetchedAt: "2026-09-26T12:00:00.000Z",
+        captureOddsAmerican: -110,
+        captureLine: 63.5,
+      }),
+    ).toStrictEqual({
+      ideaId: "a",
+      eventId: "evt-a",
+      oddsAmerican: -120,
+      source: "current",
+      line: 64.5,
+      oddsFetchedAt: "2026-09-26T12:00:00.000Z",
+    });
+  });
+
+  it("a capture price carries the capture line and book, never the live line", () => {
+    expect(
+      resolveLegPrice({
+        ...base,
+        currentOddsAmerican: null,
+        currentLine: 64.5,
+        captureOddsAmerican: -110,
+        captureLine: 63.5,
+        captureSportsbook: "FanDuel",
+      }),
+    ).toMatchObject({ source: "capture", oddsAmerican: -110, line: 63.5, captureBook: { label: "FanDuel", match: "different" } });
+  });
+
+  it("a market the book no longer offers has no price and no line", () => {
+    expect(
+      resolveLegPrice({ ...base, currentOddsAmerican: -120, currentLine: 64.5, captureOddsAmerican: -110, captureLine: 63.5, marketAvailable: false }),
+    ).toMatchObject({ source: "unavailable", oddsAmerican: null, line: null, unavailableReason: "market_not_offered", lastKnownOddsAmerican: -120 });
+  });
+});
+
+describe("snapshotLegPrice", () => {
+  const base = { ideaId: "a", eventId: "evt-a", slipSportsbook: "DraftKings" };
+
+  it("records a live price as the slip's book, with its line and age", () => {
+    const resolved = resolveLegPrice({ ...base, currentOddsAmerican: -120, currentLine: 64.5, currentOddsFetchedAt: "t1", captureOddsAmerican: null });
+    expect(snapshotLegPrice(resolved, "DraftKings")).toStrictEqual({
+      source: "current",
+      oddsAmerican: -120,
+      line: 64.5,
+      book: "DraftKings",
+      oddsFetchedAt: "t1",
+    });
+  });
+
+  it("records a capture price with the capture book and how it compares to the slip's", () => {
+    const resolved = resolveLegPrice({ ...base, currentOddsAmerican: null, captureOddsAmerican: 150, captureLine: 1.5, captureSportsbook: "Fan Duel" });
+    expect(snapshotLegPrice(resolved, "DraftKings")).toStrictEqual({
+      source: "capture",
+      oddsAmerican: 150,
+      line: 1.5,
+      book: "Fan Duel",
+      bookMatch: "different",
+    });
+  });
+
+  it("records an unpriced leg as unavailable, keeping why when the market isn't offered", () => {
+    const none = resolveLegPrice({ ...base, currentOddsAmerican: null, captureOddsAmerican: null });
+    expect(snapshotLegPrice(none, "DraftKings")).toStrictEqual({ source: "unavailable", oddsAmerican: null, line: null, book: null });
+    const pulled = resolveLegPrice({ ...base, currentOddsAmerican: -120, captureOddsAmerican: -110, marketAvailable: false });
+    expect(snapshotLegPrice(pulled, "DraftKings")).toStrictEqual({
+      source: "unavailable",
+      oddsAmerican: null,
+      line: null,
+      book: null,
+      unavailableReason: "market_not_offered",
+    });
   });
 });

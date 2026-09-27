@@ -7,6 +7,15 @@ import { __setDBForTests } from "@/storage/indexeddb/db";
 import { putLiveContext } from "@/storage/indexeddb/repositories/liveContextRepository";
 import { putFinalizedParlay } from "@/storage/indexeddb/repositories/finalizedRepository";
 import { sleeperHeadshotUrl } from "@/components/sleeperImage";
+import { getCandidate } from "@/storage/indexeddb/repositories/candidatesRepository";
+import { candidateRevision } from "@/domain/candidates/candidateState";
+
+/** The revision the user is looking at: the candidate as currently stored. */
+async function seen(candidateId: string): Promise<number> {
+  const candidate = await getCandidate(candidateId);
+  if (!candidate) throw new Error(`test setup: no candidate ${candidateId}`);
+  return candidateRevision(candidate);
+}
 
 beforeEach(() => {
   (globalThis as unknown as { indexedDB: IDBFactory }).indexedDB = new IDBFactory();
@@ -47,7 +56,7 @@ describe("finalizeCandidate", () => {
     const candidate = await createCandidate("Sunday Core", "FanDuel");
     await addLegToCandidate(candidate.id, idea.id);
 
-    const finalized = await finalizeCandidate(candidate.id, {
+    const finalized = await finalizeCandidate(candidate.id, await seen(candidate.id), {
       sportsbookBetId: "abc123",
     });
 
@@ -64,7 +73,7 @@ describe("finalizeCandidate", () => {
 
   it("refuses to finalize a candidate with no legs", async () => {
     const candidate = await createCandidate("Empty", "FanDuel");
-    await expect(finalizeCandidate(candidate.id)).rejects.toThrow();
+    await expect(finalizeCandidate(candidate.id, await seen(candidate.id))).rejects.toThrow();
   });
 
   it("is unaffected by later edits to the source idea", async () => {
@@ -76,7 +85,7 @@ describe("finalizeCandidate", () => {
     });
     const candidate = await createCandidate("Sunday Core", "FanDuel");
     await addLegToCandidate(candidate.id, idea.id);
-    const finalized = await finalizeCandidate(candidate.id);
+    const finalized = await finalizeCandidate(candidate.id, await seen(candidate.id));
 
     const { updateIdeaDetails } = await import("@/domain/ideas/ideaService");
     await updateIdeaDetails(idea.id, { lineAtCapture: 999 });
@@ -96,7 +105,7 @@ describe("finalizeCandidate", () => {
     const { deleteIdeaPermanently } = await import("@/domain/ideas/ideaService");
     await deleteIdeaPermanently(idea.id);
 
-    await expect(finalizeCandidate(candidate.id)).rejects.toThrow(/no longer exists/);
+    await expect(finalizeCandidate(candidate.id, await seen(candidate.id))).rejects.toThrow(/no longer exists/);
     expect(await listFinalizedParlays()).toHaveLength(0);
   });
 
@@ -110,10 +119,10 @@ describe("finalizeCandidate", () => {
     await addLegToCandidate(candidate.id, idea.id);
 
     await expect(
-      finalizeCandidate(candidate.id, { actualSportsbookOddsAmerican: Number("not a number") }),
+      finalizeCandidate(candidate.id, await seen(candidate.id), { actualSportsbookOddsAmerican: Number("not a number") }),
     ).rejects.toThrow();
-    await expect(finalizeCandidate(candidate.id, { actualSportsbookOddsAmerican: 0 })).rejects.toThrow();
-    await expect(finalizeCandidate(candidate.id, { actualSportsbookOddsAmerican: 50 })).rejects.toThrow();
+    await expect(finalizeCandidate(candidate.id, await seen(candidate.id), { actualSportsbookOddsAmerican: 0 })).rejects.toThrow();
+    await expect(finalizeCandidate(candidate.id, await seen(candidate.id), { actualSportsbookOddsAmerican: 50 })).rejects.toThrow();
   });
 
   it("only reads live context scoped to the candidate's own sportsbook", async () => {
@@ -146,7 +155,7 @@ describe("finalizeCandidate", () => {
       playerStatusSource: null,
     });
 
-    const finalized = await finalizeCandidate(fanduel.id);
+    const finalized = await finalizeCandidate(fanduel.id, await seen(fanduel.id));
     // The FanDuel candidate must never pick up DraftKings' cached price.
     expect(finalized.legSnapshots[0].lineAtFinalize).toBeNull();
     expect(finalized.legSnapshots[0].oddsAtFinalizeAmerican).toBeNull();
@@ -160,7 +169,7 @@ describe("finalizeCandidate", () => {
     });
     const candidate = await createCandidate("Sunday Core", "FanDuel");
     await addLegToCandidate(candidate.id, idea.id);
-    const finalized = await finalizeCandidate(candidate.id);
+    const finalized = await finalizeCandidate(candidate.id, await seen(candidate.id));
 
     expect(finalized.legSnapshots[0].playerId).toBe("4046");
 
