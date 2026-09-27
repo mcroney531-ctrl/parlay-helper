@@ -22,7 +22,9 @@ export default defineConfig({
   workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: 0,
-  reporter: [["list"]],
+  // A persistent HTML report (never auto-opened) plus a video of any failing test,
+  // so a rare flake leaves evidence behind (B, Phase 3 chunk 2 review).
+  reporter: [["list"], ["html", { open: "never" }]],
   timeout: 30_000,
   use: {
     baseURL: BASE_URL,
@@ -30,6 +32,7 @@ export default defineConfig({
     // page.route; the SW lifecycle is not what these checks cover.
     serviceWorkers: "block",
     trace: "retain-on-failure",
+    video: "retain-on-failure",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
