@@ -16,6 +16,8 @@ export type SeedIdea = {
   selection?: string | null;
   lineAtCapture?: number | null;
   oddsAtCaptureAmerican?: number | null;
+  /** A game: with league, market and a supported book, the leg can be refreshed. */
+  eventId?: string | null;
 };
 
 export type SeedSlip = {
@@ -89,7 +91,7 @@ export async function seedV2(page: Page, seed: Seed, { keepOpen = false } = {}):
           playerName: i.playerName ?? null,
           team: null,
           opponent: null,
-          eventId: null,
+          eventId: i.eventId ?? null,
           marketKey: i.marketKey ?? null,
           marketLabel: i.marketLabel ?? null,
           selection: i.selection ?? null,

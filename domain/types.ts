@@ -67,6 +67,14 @@ export type LiveContext = {
   oddsSource: string | null;
   playerStatusFetchedAt: string | null;
   playerStatusSource: string | null;
+  // The refresh attempt whose result each half of this row holds (see
+  // allocateRefreshAttempt). A result from an EARLIER attempt never overwrites
+  // one from a later attempt. Optional: rows written before these existed have
+  // none, which reads as 0 (older than every attempt).
+  /** Attempt number of the odds refresh whose result this row holds. */
+  oddsAttempt?: number;
+  /** Attempt number of the player-status refresh whose result this row holds. */
+  playerStatusAttempt?: number;
 };
 
 export type CandidateStatus = "draft" | "placed";

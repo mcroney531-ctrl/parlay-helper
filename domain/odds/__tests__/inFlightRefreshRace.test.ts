@@ -350,9 +350,10 @@ describe("the identity edit and a guarded write can't interleave", () => {
         mergeLiveContextIfIdeaCurrent(
           idea.id,
           "FanDuel",
+          { source: "odds", seq: 1 },
           (current) => current !== undefined && !changesPriceIdentity(idea, current),
           () => cachedRow(idea.id, { currentOddsAmerican: -125 }),
-        );
+        ).then((outcome) => outcome === "written");
       let editing: Promise<unknown>;
       let writing: Promise<boolean>;
       if (offset < 0) {

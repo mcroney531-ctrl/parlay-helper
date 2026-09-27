@@ -115,39 +115,66 @@ function toStored(context: LiveContext): LiveContext {
   };
 }
 
+/** Which half of a row a refresh writes, and the attempt it came from (allocateRefreshAttempt). */
+export type RefreshAttempt = { source: "odds" | "playerStatus"; seq: number };
+
 /**
- * Writes one refresh result for (idea, sportsbook), but only if the idea is
- * still the one it was fetched for. In ONE readwrite transaction over ideas
- * and liveContext: reads the idea as stored now, and if `stillCurrent` says it
- * no longer is (its price identity changed, or it was deleted) writes nothing
- * and resolves false. Otherwise reads the existing row, writes `build(existing)`
- * and resolves true. Because the idea edit (updateIdeaWithLiveContext) is also
- * one transaction over both stores, the two can't interleave: either this
- * write lands first and the edit then clears it, or the edit lands first and
- * this write is skipped (INV-13).
+ * written: the result was stored. idea-changed: the idea's price identity
+ * changed, or it was deleted, since the request (INV-13). superseded: a later
+ * refresh attempt's result for this half of the row is already stored.
+ */
+export type RefreshWriteOutcome = "written" | "idea-changed" | "superseded";
+
+/**
+ * Writes one refresh result for (idea, sportsbook) in ONE readwrite
+ * transaction over ideas and liveContext, and only if:
+ * - the idea is still the one it was fetched for (`stillCurrent`; INV-13),
+ *   else nothing is written ("idea-changed"); and
+ * - no LATER refresh attempt's result is already stored for this half of the
+ *   row (odds or player status), else nothing is written ("superseded"): an
+ *   earlier attempt never overwrites a later attempt's committed result, even
+ *   when its response arrives last.
+ * Otherwise the row becomes `build(existing)`, stamped with this attempt for
+ * its half; the other half's stamp is kept as it was.
  *
- * `stillCurrent` and `build` are synchronous on purpose: awaiting anything but
- * an IndexedDB request inside the transaction would commit it early.
+ * Because the idea edit (updateIdeaWithLiveContext) is also one transaction
+ * over both stores, the two can't interleave, and because the attempt check
+ * and the write share this transaction, two refreshes' writes can't interleave
+ * either. `stillCurrent` and `build` are synchronous on purpose: awaiting
+ * anything but an IndexedDB request inside the transaction would commit it
+ * early.
  */
 export async function mergeLiveContextIfIdeaCurrent(
   ideaId: string,
   sportsbook: string,
+  attempt: RefreshAttempt,
   stillCurrent: (idea: CapturedIdea | undefined) => boolean,
   build: (existing: LiveContext | undefined) => LiveContext,
-): Promise<boolean> {
+): Promise<RefreshWriteOutcome> {
   const db = await liveContextReadyDB();
   const tx = db.transaction([STORES.ideas, STORES.liveContext], "readwrite");
   try {
     const idea = await tx.objectStore(STORES.ideas).get(ideaId);
     if (!stillCurrent(idea)) {
       await tx.done;
-      return false;
+      return "idea-changed";
     }
     const store = tx.objectStore(STORES.liveContext);
     const existing = await store.get(liveContextStoreKey(ideaId, sportsbook));
-    await store.put(toStored(build(existing)));
+    const stampField = attempt.source === "odds" ? "oddsAttempt" : "playerStatusAttempt";
+    // A row written before attempts were stamped reads as 0: older than any attempt.
+    if ((existing?.[stampField] ?? 0) > attempt.seq) {
+      await tx.done;
+      return "superseded";
+    }
+    const next: LiveContext = { ...build(existing) };
+    // The stamps are kept here, not left to `build`, so no caller can drop them.
+    if (existing?.oddsAttempt !== undefined) next.oddsAttempt = existing.oddsAttempt;
+    if (existing?.playerStatusAttempt !== undefined) next.playerStatusAttempt = existing.playerStatusAttempt;
+    next[stampField] = attempt.seq;
+    await store.put(toStored(next));
     await tx.done;
-    return true;
+    return "written";
   } catch (error) {
     abandonTransaction(tx);
     throw error;

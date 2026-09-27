@@ -1,5 +1,10 @@
 import type { CandidateParlay, CapturedIdea, LiveContext } from "@/domain/types";
-import { mergeLiveContextIfIdeaCurrent } from "@/storage/indexeddb/repositories/liveContextRepository";
+import {
+  mergeLiveContextIfIdeaCurrent,
+  type RefreshAttempt,
+  type RefreshWriteOutcome,
+} from "@/storage/indexeddb/repositories/liveContextRepository";
+import { allocateRefreshAttempt } from "@/storage/indexeddb/repositories/metaRepository";
 import { changesPriceIdentity } from "@/domain/ideas/ideaService";
 import { missingOddsRequestFields } from "./refreshability";
 
@@ -45,6 +50,8 @@ export type OddsEventOutcome = {
   unmatchedIdeaIds: string[];
   /** Legs whose idea was edited (price identity changed) or deleted while this was in flight: nothing written (INV-13). */
   changedIdeaIds: string[];
+  /** Legs where a LATER refresh attempt's odds were already stored, so this older result was not written. */
+  supersededIdeaIds: string[];
 };
 
 export type OddsRefreshResult = {
@@ -70,6 +77,13 @@ export type OddsRefreshResult = {
    * the edited proposition.
    */
   changedIdeaIds: string[];
+  /**
+   * Legs whose result wasn't written because a refresh that STARTED LATER had
+   * already stored its own result for them (another tab, or a refresh started
+   * after navigating away and back). All events' supersededIdeaIds together.
+   * Nothing to tell the user: what's stored is newer than this result.
+   */
+  supersededIdeaIds: string[];
 };
 
 export type PlayerStatusRefreshResult = {
@@ -78,6 +92,8 @@ export type PlayerStatusRefreshResult = {
   failure: RefreshRequestFailure | null;
   /** As OddsRefreshResult.changedIdeaIds: the status was fetched for a player the leg no longer names. */
   changedIdeaIds: string[];
+  /** As OddsRefreshResult.supersededIdeaIds, for player status. */
+  supersededIdeaIds: string[];
 };
 
 export type CandidateRefreshResult = {
@@ -157,22 +173,28 @@ export function matchOutcome(idea: CapturedIdea, outcomes: OddsApiOutcome[]): Od
 }
 
 /**
- * Writes one refresh result onto the stored row for (idea, book), unless the
- * idea is no longer the one the request was made for: if its price identity
- * changed (changesPriceIdentity, the one definition) or it was deleted while
- * the request was in flight, nothing is written and this resolves false
- * (INV-13). The check and the write are one transaction, so an edit can't land
- * between them. A cosmetic edit (note, confidence) doesn't change the identity,
- * so the result is still written.
+ * Writes one refresh result onto the stored row for (idea, book), unless:
+ * - the idea is no longer the one the request was made for: its price
+ *   identity changed (changesPriceIdentity, the one definition) or it was
+ *   deleted while the request was in flight ("idea-changed", INV-13). A
+ *   cosmetic edit (note, confidence) doesn't change the identity, so the
+ *   result is still written; or
+ * - a refresh attempt that started LATER has already stored its result for
+ *   the same half of the row ("superseded"): an earlier attempt never
+ *   overwrites a later attempt's committed result, whichever response arrives
+ *   last.
+ * Both checks and the write are one transaction (mergeLiveContextIfIdeaCurrent).
  */
 async function mergeLiveContext(
   fetchedFor: CapturedIdea,
   sportsbook: string,
+  attempt: RefreshAttempt,
   patch: Partial<LiveContext>,
-): Promise<boolean> {
+): Promise<RefreshWriteOutcome> {
   return mergeLiveContextIfIdeaCurrent(
     fetchedFor.id,
     sportsbook,
+    attempt,
     (current) => current !== undefined && !changesPriceIdentity(fetchedFor, current),
     (existing) => {
       // A patch without fetchedAt is a failed attempt: it must not make older data
@@ -238,6 +260,7 @@ export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas:
       skippedIdeaIds,
       missingIdeaIds,
       changedIdeaIds: [],
+      supersededIdeaIds: [],
     };
   }
 
@@ -249,7 +272,12 @@ export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas:
     skippedIdeaIds,
     missingIdeaIds,
     changedIdeaIds: [],
+    supersededIdeaIds: [],
   });
+
+  // Taken before the request goes out, so it orders this attempt by when it
+  // STARTED relative to other refreshes, not by when its response arrives.
+  const attempt: RefreshAttempt = { source: "odds", seq: await allocateRefreshAttempt() };
 
   let response: Response;
   try {
@@ -292,6 +320,7 @@ export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas:
       priceRefreshed: result.status === "ok",
       unmatchedIdeaIds: [],
       changedIdeaIds: [],
+      supersededIdeaIds: [],
     };
     events.push(event);
     for (const ideaId of result.ideaIds) {
@@ -303,12 +332,13 @@ export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas:
         // marketAvailable is written only for not_found, which is an actual
         // observation; provider_error / not_configured observed nothing, so
         // they must not reset an earlier true/false to null.
-        const written = await mergeLiveContext(idea, candidate.sportsbook, {
+        const outcome = await mergeLiveContext(idea, candidate.sportsbook, attempt, {
           eventId: idea.eventId,
           ...(result.status === "not_found" ? { marketAvailable: false } : {}),
           warnings,
         });
-        if (!written) event.changedIdeaIds.push(ideaId);
+        if (outcome === "idea-changed") event.changedIdeaIds.push(ideaId);
+        else if (outcome === "superseded") event.supersededIdeaIds.push(ideaId);
         continue;
       }
       const outcome = matchOutcome(idea, result.outcomes);
@@ -319,7 +349,7 @@ export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas:
       // selection/line) is a matcher limitation, not evidence of absence, so it
       // stays unknown (null) rather than false.
       const listed = result.outcomes.some((o) => o.marketKey === idea.marketKey);
-      const written = await mergeLiveContext(idea, candidate.sportsbook, {
+      const written = await mergeLiveContext(idea, candidate.sportsbook, attempt, {
         eventId: idea.eventId,
         currentLine: outcome?.point ?? null,
         currentOddsAmerican: outcome?.priceAmerican ?? null,
@@ -338,7 +368,8 @@ export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas:
               ]
             : warnings,
       });
-      if (!written) event.changedIdeaIds.push(ideaId);
+      if (written === "idea-changed") event.changedIdeaIds.push(ideaId);
+      else if (written === "superseded") event.supersededIdeaIds.push(ideaId);
       else if (outcome === null) event.unmatchedIdeaIds.push(ideaId);
     }
   }
@@ -353,7 +384,8 @@ export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas:
           ? "ok"
           : "partial";
   const changedIdeaIds = events.flatMap((event) => event.changedIdeaIds);
-  return { status, attemptedAt, failure: null, events, skippedIdeaIds, missingIdeaIds, changedIdeaIds };
+  const supersededIdeaIds = events.flatMap((event) => event.supersededIdeaIds);
+  return { status, attemptedAt, failure: null, events, skippedIdeaIds, missingIdeaIds, changedIdeaIds, supersededIdeaIds };
 }
 
 export async function refreshPlayerStatusForCandidate(
@@ -365,16 +397,19 @@ export async function refreshPlayerStatusForCandidate(
     .map((id) => ideas.find((idea) => idea.id === id))
     .filter((idea): idea is CapturedIdea => Boolean(idea && idea.playerId));
 
-  if (legs.length === 0) return { status: "nothing_to_refresh", attemptedAt, failure: null, changedIdeaIds: [] };
+  const none = { changedIdeaIds: [], supersededIdeaIds: [] };
+  if (legs.length === 0) return { status: "nothing_to_refresh", attemptedAt, failure: null, ...none };
 
   const playerIds = [...new Set(legs.map((leg) => leg.playerId as string))];
+  // Taken before the request goes out: see refreshOddsForCandidate.
+  const attempt: RefreshAttempt = { source: "playerStatus", seq: await allocateRefreshAttempt() };
   let response: Response;
   try {
     response = await fetch(`/api/sleeper?playerIds=${playerIds.join(",")}`);
   } catch (error) {
-    return { status: "failed", attemptedAt, failure: failureFromError(error), changedIdeaIds: [] };
+    return { status: "failed", attemptedAt, failure: failureFromError(error), ...none };
   }
-  if (!response.ok) return { status: "failed", attemptedAt, failure: failureFromResponse(response), changedIdeaIds: [] };
+  if (!response.ok) return { status: "failed", attemptedAt, failure: failureFromResponse(response), ...none };
 
   let body: { fetchedAt: string; players: Record<string, { status: string | null; depthChartPosition: string | null }> };
   try {
@@ -384,16 +419,17 @@ export async function refreshPlayerStatusForCandidate(
       status: "failed",
       attemptedAt,
       failure: { kind: "invalid_response", httpStatus: response.status },
-      changedIdeaIds: [],
+      ...none,
     };
   }
   const { fetchedAt, players } = body;
 
   const changedIdeaIds: string[] = [];
+  const supersededIdeaIds: string[] = [];
   for (const idea of legs) {
     const player = players[idea.playerId as string];
     if (!player) continue;
-    const written = await mergeLiveContext(idea, candidate.sportsbook, {
+    const written = await mergeLiveContext(idea, candidate.sportsbook, attempt, {
       playerStatus: player.status,
       depthChartPosition: player.depthChartPosition,
       playerStatusFetchedAt: fetchedAt,
@@ -401,9 +437,10 @@ export async function refreshPlayerStatusForCandidate(
       fetchedAt,
       source: "sleeper",
     });
-    if (!written) changedIdeaIds.push(idea.id);
+    if (written === "idea-changed") changedIdeaIds.push(idea.id);
+    else if (written === "superseded") supersededIdeaIds.push(idea.id);
   }
-  return { status: "ok", attemptedAt, failure: null, changedIdeaIds };
+  return { status: "ok", attemptedAt, failure: null, changedIdeaIds, supersededIdeaIds };
 }
 
 /**
