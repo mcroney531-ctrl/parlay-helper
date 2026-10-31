@@ -28,7 +28,7 @@ export function CurrentSlipTray() {
         : "Start a new slip";
     return (
       <Link
-        href="/builder"
+        href="/slip"
         className="flex items-center justify-between rounded-[var(--radius-control)] border px-4 py-3 text-sm font-semibold"
         style={{ borderColor: "var(--color-border)", background: "var(--color-surface)", color: "var(--color-action)" }}
       >
@@ -40,7 +40,7 @@ export function CurrentSlipTray() {
 
   return (
     <Link
-      href="/builder"
+      href="/slip"
       className="flex items-center justify-between rounded-[var(--radius-control)] px-4 py-3 text-sm font-semibold"
       style={{ background: "var(--color-brand)", color: "#ffffff" }}
     >

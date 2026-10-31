@@ -14,11 +14,11 @@ test("after placing, the Slip screen asks which slip is next instead of silently
       { id: "sunday", name: "Sunday Core", sportsbook: "FanDuel", ideaIds: ["i2"], updatedAt: LATER },
     ],
   });
-  await page.goto("/builder");
+  await page.goto("/slip");
   await expect(slipTab(page, "Sunday Core")).toHaveAttribute("aria-selected", "true");
 
   await markPlaced(page);
-  await page.goto("/builder");
+  await page.goto("/slip");
 
   await expect(page.getByText("Your slip was placed and is in")).toBeVisible();
   await expect(page.getByText("Continue a draft")).toBeVisible();
@@ -27,11 +27,11 @@ test("after placing, the Slip screen asks which slip is next instead of silently
   await expect(page.getByRole("button", { name: "Mark Placed", exact: true })).toHaveCount(0);
 
   // The same state on the Ideas side.
-  await page.goto("/capture");
+  await page.goto("/ideas");
   await expect(page.getByText("Slip placed · pick your next slip")).toBeVisible();
 
   // Picking the draft makes it current.
-  await page.goto("/builder");
+  await page.goto("/slip");
   await page.getByRole("button", { name: /^Older draft · FanDuel · 1 leg$/ }).click();
   await expect(slipTab(page, "Older draft")).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("button", { name: "Mark Placed", exact: true })).toBeVisible();

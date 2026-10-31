@@ -4,12 +4,12 @@ import type { CandidateParlay, CapturedIdea, LiveContext } from "@/domain/types"
 
 const data = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 vi.mock("@/app/DataProvider", () => ({ useData: () => data.value }));
-vi.mock("next/navigation", () => ({ usePathname: () => "/builder", useRouter: () => ({ push: () => {} }) }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/slip", useRouter: () => ({ push: () => {} }) }));
 
 import { BuilderTray } from "../BuilderTray";
 import { CurrentSlipTray } from "../CurrentSlipTray";
 import { PropLegCard } from "../PropLegCard";
-import BuilderPage from "@/app/builder/page";
+import BuilderPage from "@/app/slip/page";
 
 /** Visible text only, with entities decoded, so assertions read like what the user sees. */
 function text(html: string): string {

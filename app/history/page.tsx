@@ -176,7 +176,7 @@ export default function HistoryPage() {
           <p className="max-w-xs text-sm" style={{ color: "var(--color-muted)" }}>
             Once you mark a slip placed, it shows up here as a permanent, read-only record — never edited or graded.
           </p>
-          <Link href="/builder">
+          <Link href="/slip">
             <Button>Go to current slip</Button>
           </Link>
         </div>

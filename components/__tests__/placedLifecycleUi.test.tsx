@@ -202,7 +202,7 @@ describe("the lifecycle handlers, driven directly (no DOM harness in this repo)"
 
     expect(cloneId).not.toBe(source.id);
     expect(r.pointer()).toBe(cloneId);
-    expect(r.calls).toEqual(["refreshCandidates", `pointer:${cloneId}`, "navigate:/builder"]);
+    expect(r.calls).toEqual(["refreshCandidates", `pointer:${cloneId}`, "navigate:/slip"]);
     expect(await getCandidate(cloneId)).toMatchObject({ status: "draft", ideaIds: ["idea-1"] });
   });
 });

@@ -11,11 +11,11 @@ test("Clone from History opens a new current copy; Delete removes the placed sli
     ideas: [idea("i1", "Puka Nacua")],
     slips: [{ id: "s1", name: "Sunday Core", sportsbook: "FanDuel", ideaIds: ["i1"], updatedAt: EARLIER }],
   });
-  await page.goto("/builder");
+  await page.goto("/slip");
   await markPlaced(page);
 
   await page.getByRole("button", { name: "Clone to new slip" }).click();
-  await expect(page).toHaveURL(/\/builder$/);
+  await expect(page).toHaveURL(/\/slip$/);
   await expect(slipTab(page, "Sunday Core (copy)")).toHaveAttribute("aria-selected", "true");
   await expect(page.getByText("Puka Nacua").first()).toBeVisible();
 
@@ -34,6 +34,6 @@ test("Clone from History opens a new current copy; Delete removes the placed sli
   await expect(page.getByRole("heading", { name: "Sunday Core", exact: true })).toBeVisible();
 
   // The clone is untouched by deleting the placed slip.
-  await page.goto("/builder");
+  await page.goto("/slip");
   await expect(slipTab(page, "Sunday Core (copy)")).toHaveAttribute("aria-selected", "true");
 });

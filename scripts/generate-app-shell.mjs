@@ -17,7 +17,10 @@ import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-const ROUTES = ["capture", "bucket", "builder", "history"];
+// Canonical routes only are precached, as real 200 HTML; the old names
+// (aliases) are redirects and never go through Cache.addAll.
+const ROUTE_CONFIG = JSON.parse(await readFile(path.resolve(process.cwd(), "config", "routes.json"), "utf8"));
+const ROUTES = ROUTE_CONFIG.canonical.map((r) => r.slice(1));
 const NEXT_DIR = path.resolve(process.cwd(), ".next");
 const MANIFEST_PATH = path.resolve(process.cwd(), "public", "precache-manifest.json");
 const SW_TEMPLATE_PATH = path.resolve(process.cwd(), "scripts", "sw-template.js");
@@ -64,10 +67,14 @@ async function main() {
   await writeFile(MANIFEST_PATH, JSON.stringify(manifest, null, 2) + "\n");
 
   const template = await readFile(SW_TEMPLATE_PATH, "utf8");
-  if (!template.includes("__CACHE_VERSION__")) {
-    throw new Error("sw-template.js is missing the __CACHE_VERSION__ placeholder");
+  for (const placeholder of ["__CACHE_VERSION__", "__ROUTES__"]) {
+    if (!template.includes(placeholder)) {
+      throw new Error(`sw-template.js is missing the ${placeholder} placeholder`);
+    }
   }
-  const swSource = template.replaceAll("__CACHE_VERSION__", version);
+  const swSource = template
+    .replaceAll("__CACHE_VERSION__", version)
+    .replace("__ROUTES__", JSON.stringify({ canonical: ROUTE_CONFIG.canonical, aliases: ROUTE_CONFIG.aliases }));
   await writeFile(SW_OUTPUT_PATH, swSource);
 
   console.log(

@@ -24,7 +24,7 @@ export async function cloneToNewSlip(
   const clone = await cloneCandidate(slipId);
   await deps.refreshCandidates();
   deps.setActiveCandidateId(clone.id);
-  deps.navigate("/builder");
+  deps.navigate("/slip");
   return clone.id;
 }
 

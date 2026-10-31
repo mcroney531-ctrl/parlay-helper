@@ -125,7 +125,7 @@ export function IdeaCard({ idea, variant }: { idea: CapturedIdea; variant: "comp
                 <Pill tone="success" icon={<CheckIcon className="h-3 w-3" />}>
                   Added
                 </Pill>
-                <Link href="/builder" className="text-sm font-semibold" style={{ color: "var(--color-action)" }}>
+                <Link href="/slip" className="text-sm font-semibold" style={{ color: "var(--color-action)" }}>
                   View slip →
                 </Link>
               </>
@@ -135,7 +135,7 @@ export function IdeaCard({ idea, variant }: { idea: CapturedIdea; variant: "comp
               </Button>
             ) : (
               <Link
-                href="/builder"
+                href="/slip"
                 className="flex-1 rounded-[var(--radius-control)] px-3 py-1.5 text-center text-sm font-semibold text-white"
                 style={{ background: "var(--color-action)" }}
               >

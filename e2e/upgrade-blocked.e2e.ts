@@ -14,7 +14,7 @@ test("an old tab holding the v2 database blocks the upgrade with a message; clos
   await seedV2(oldTab, { ideas: [idea("idea-1", "Puka Nacua")], slips: [] }, { keepOpen: true });
 
   const newTab = await context.newPage();
-  await newTab.goto("/bucket");
+  await newTab.goto("/ideas");
   await expect(newTab.getByText(BLOCKED)).toBeVisible();
   await expect(newTab.getByText("Puka Nacua over 63.5 receiving yards")).toHaveCount(0);
 

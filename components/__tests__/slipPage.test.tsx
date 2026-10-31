@@ -13,11 +13,11 @@ const state: { value: Record<string, unknown> } = { value: {} };
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: () => {} }),
   useSearchParams: () => new URLSearchParams(),
-  usePathname: () => "/builder",
+  usePathname: () => "/slip",
 }));
 vi.mock("next/link", () => ({ default: ({ children }: { children: React.ReactNode }) => children }));
 vi.mock("@/app/DataProvider", () => ({ useData: () => state.value }));
-import BuilderPage from "@/app/builder/page";
+import BuilderPage from "@/app/slip/page";
 
 const T = "2026-10-31T12:00:00.000Z";
 

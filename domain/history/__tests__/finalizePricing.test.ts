@@ -67,7 +67,7 @@ async function slipOf(ideas: CapturedIdea[]) {
   return { slipId: slip.id, seen: candidateRevision(seen!) };
 }
 
-/** The builder's estimate, computed exactly as app/builder/page.tsx does from what DataProvider loads. */
+/** The builder's estimate, computed exactly as app/slip/page.tsx does from what DataProvider loads. */
 async function builderEstimate(ideaIds: string[]) {
   const byKey: Record<string, LiveContext> = {};
   for (const row of await getAllLiveContext()) byKey[liveContextKey(row.ideaId, row.sportsbook)] = row;

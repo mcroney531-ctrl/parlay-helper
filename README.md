@@ -11,7 +11,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000 — it redirects to `/capture`.
+Open http://localhost:3000 — it redirects to `/ideas`. The old paths `/capture`, `/bucket` and `/builder` redirect (308) to `/ideas` and `/slip`.
 
 ## Scripts
 

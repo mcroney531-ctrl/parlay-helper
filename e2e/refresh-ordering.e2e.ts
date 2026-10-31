@@ -62,11 +62,11 @@ test("two tabs refresh the same slip; the refresh that started first but answers
     await aReleased;
     await route.fulfill({ json: oddsBody(route, -110) });
   });
-  await tabA.goto("/builder");
+  await tabA.goto("/slip");
 
   const tabB = await context.newPage();
   await tabB.route("**/api/odds", (route) => route.fulfill({ json: oddsBody(route, -150) }));
-  await tabB.goto("/builder");
+  await tabB.goto("/slip");
 
   const refreshA = tabA.getByRole("button", { name: /Refresh odds & status|Refreshing/ });
   const refreshB = tabB.getByRole("button", { name: /Refresh odds & status|Refreshing/ });

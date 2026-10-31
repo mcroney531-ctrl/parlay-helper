@@ -2,7 +2,7 @@
   "name": "Parlay Helper",
   "short_name": "Parlay Helper",
   "description": "A calm, personal planning tool for capturing prop ideas and assembling parlays deliberately.",
-  "start_url": "/capture",
+  "start_url": "/ideas",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f7f7f5",
@@ -15,7 +15,7 @@
     {
       "name": "Quick Add",
       "short_name": "Quick Add",
-      "url": "/capture",
+      "url": "/ideas",
       "description": "Save a prop idea instantly"
     }
   ]

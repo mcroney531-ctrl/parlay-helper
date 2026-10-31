@@ -2,15 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BucketIcon, BuildIcon, CaptureIcon, HistoryIcon } from "@/components/icons";
+import { BucketIcon, BuildIcon, HistoryIcon } from "@/components/icons";
 
-// User-facing labels only — internal route paths and domain naming
-// ("candidate", "bucket") are unchanged; renaming those isn't needed to
-// fix what users see in the nav.
+// The three screens, at their canonical routes (config/routes.json). Capture
+// is part of Ideas; the old paths redirect.
 const TABS = [
-  { href: "/capture", label: "Capture", Icon: CaptureIcon },
-  { href: "/bucket", label: "Ideas", Icon: BucketIcon },
-  { href: "/builder", label: "Slip", Icon: BuildIcon },
+  { href: "/ideas", label: "Ideas", Icon: BucketIcon },
+  { href: "/slip", label: "Slip", Icon: BuildIcon },
   { href: "/history", label: "History", Icon: HistoryIcon },
 ];
 

@@ -5,13 +5,19 @@ import { useData } from "@/app/DataProvider";
 import { IdeaCard } from "@/components/IdeaCard";
 import { PageShell } from "@/components/PageShell";
 import { CurrentSlipTray } from "@/components/CurrentSlipTray";
+import { QuickAddForm } from "@/components/QuickAddForm";
 import { BucketIcon, SearchIcon } from "@/components/icons";
 import { Select, TextInput } from "@/components/FormControls";
 import { CONFIDENCE_LEVELS } from "@/domain/types";
 
 type CompletionFilter = "all" | "needs_details" | "structured";
 
-export default function BucketPage() {
+/**
+ * Ideas: capture and the idea list on one screen (chunk 3 decision (a)). The
+ * quick-add input is at the top and focused, so opening the app is ready to
+ * type; the list below it is every idea.
+ */
+export default function IdeasPage() {
   const { ideas, loading } = useData();
   const [search, setSearch] = useState("");
   const [confidenceFilter, setConfidenceFilter] = useState<string>("all");
@@ -53,6 +59,10 @@ export default function BucketPage() {
   return (
     <PageShell title="IDEAS" icon={<BucketIcon className="h-8 w-8" />}>
       <div className="flex flex-col gap-4">
+        <section>
+          <QuickAddForm />
+        </section>
+
         <CurrentSlipTray />
 
         <div className="relative">
