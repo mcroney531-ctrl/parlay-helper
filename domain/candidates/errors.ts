@@ -31,6 +31,46 @@ export class AlreadyPlacedError extends Error {
   }
 }
 
+/**
+ * A slip with legs whose idea no longer exists can't be placed: those legs
+ * have no details and no price. Consent to unpriced legs (INV-17) never
+ * covers them. Nothing was written.
+ */
+export class DeletedLegsError extends Error {
+  constructor(
+    readonly candidateId: string,
+    readonly missingLegIds: string[],
+  ) {
+    super(
+      `Cannot place: ${missingLegIds.length} leg${missingLegIds.length === 1 ? "" : "s"} reference${missingLegIds.length === 1 ? "s" : ""} an idea that no longer exists. Remove ${missingLegIds.length === 1 ? "it" : "them"} from the slip first.`,
+    );
+    this.name = "DeletedLegsError";
+  }
+}
+
+/**
+ * INV-17: at commit, legs had no current price that the user wasn't warned
+ * about when they confirmed (a price disappeared in between). Placement never
+ * goes ahead on prices the user didn't agree to; nothing was written, and the
+ * confirm has to be shown again with the current set.
+ */
+export class UnpricedConsentError extends Error {
+  constructor(
+    readonly candidateId: string,
+    /** Every present leg with no price at commit. */
+    readonly unpricedLegIds: string[],
+    /** The ones the user wasn't warned about. */
+    readonly unacknowledgedLegIds: string[],
+  ) {
+    super(
+      unacknowledgedLegIds.length === 1
+        ? "A leg no longer has a current price. Review the slip and confirm again."
+        : `${unacknowledgedLegIds.length} legs no longer have a current price. Review the slip and confirm again.`,
+    );
+    this.name = "UnpricedConsentError";
+  }
+}
+
 /** The candidate changed after the version the user confirmed (INV-6). Nothing was written. */
 export class StaleCandidateError extends Error {
   constructor(

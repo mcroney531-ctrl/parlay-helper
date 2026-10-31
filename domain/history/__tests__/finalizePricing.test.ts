@@ -129,7 +129,8 @@ describe("one price path (INV-12)", () => {
     const { slipId, seen } = await slipOf([pulled, fine]);
 
     const builder = await builderEstimate([pulled.id, fine.id]);
-    const record = await finalizeCandidate(slipId, seen);
+    // The user was warned about the unpriced leg and confirmed anyway (INV-17).
+    const record = await finalizeCandidate(slipId, seen, { acknowledgedUnpricedLegIds: [pulled.id] });
 
     // Neither the last-known live price nor the capture price stands in for it.
     expect(record.legSnapshots[0].price).toStrictEqual({
@@ -150,7 +151,7 @@ describe("one price path (INV-12)", () => {
     const bare = await leg("Bare", { odds: null, line: null, book: null });
     const { slipId, seen } = await slipOf([bare]);
 
-    const record = await finalizeCandidate(slipId, seen);
+    const record = await finalizeCandidate(slipId, seen, { acknowledgedUnpricedLegIds: [bare.id] });
     expect(record.legSnapshots[0].price).toStrictEqual({ source: "unavailable", oddsAmerican: null, line: null, book: null });
     expect(record.estimatedOddsAmerican).toBeNull();
   });

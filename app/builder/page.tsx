@@ -19,6 +19,7 @@ import {
   calculatePayoutCents,
   hasSameGameCombination,
   legPriceInputs,
+  unpricedLegIds,
 } from "@/domain/odds/estimate";
 import { SportsbookSupportHint } from "@/components/SportsbookSupportHint";
 import { detectCorrelationSignals } from "@/domain/rules/correlation";
@@ -220,6 +221,7 @@ export default function BuilderPage() {
                     slipName={candidate.name}
                     seenRevision={candidateRevision(candidate)}
                     legCount={legs.length}
+                    unpricedLegIds={unpricedLegIds(estimate)}
                   />
                 </div>
               )}

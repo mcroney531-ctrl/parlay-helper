@@ -1,6 +1,7 @@
 import { americanToDecimal, decimalToAmerican, roundAmerican } from "./conversion";
 import { compareSportsbooks, type SportsbookMatch } from "@/domain/sportsbook";
 import type { CapturedIdea, LiveContext, SnapshotLegPrice } from "@/domain/types";
+import { missingLegIds, presentIdeas, type SlipLeg } from "@/domain/candidates/slipLegs";
 
 // The canonical resolver (INV-12): every place that needs "the price of this
 // leg" (the builder's estimate, finalize's saved estimate and each saved leg's
@@ -203,6 +204,56 @@ export function calculateCombinedEstimate(legs: LegPriceInput[]): CombinedEstima
     americanOdds: roundAmerican(decimalToAmerican(decimalOdds)),
     legSources: resolved,
   };
+}
+
+export type SlipEstimate =
+  | (Extract<CombinedEstimate, { ok: true }> & { missingLegIds: [] })
+  | {
+      ok: false;
+      /** deleted_legs: at least one leg's idea no longer exists, so the slip as stored can't be priced. */
+      reason: "no_legs" | "missing_price" | "deleted_legs";
+      /** Present legs with no price. Never includes a deleted leg. */
+      unavailableLegIds: string[];
+      /** Legs whose idea no longer exists, in slip order. */
+      missingLegIds: string[];
+      legSources: ResolvedLegPrice[];
+    };
+
+/**
+ * The estimate for a slip's legs as stored, the one used by the Slip screen
+ * and by placement (INV-12). A leg whose idea was deleted has no price of any
+ * kind, even if a cached live price for it remains, so while one is there the
+ * estimate fails for the whole slip rather than pricing the survivors as if
+ * they were the slip. legSources resolves the present legs only, in slip
+ * order, and deleted legs are counted apart from present legs with no price.
+ */
+export function calculateSlipEstimate(
+  legs: readonly SlipLeg[],
+  slipSportsbook: string,
+  liveContextFor: (ideaId: string) => LiveContext | undefined,
+): SlipEstimate {
+  const estimate = calculateCombinedEstimate(legPriceInputs(presentIdeas(legs), slipSportsbook, liveContextFor));
+  const missing = missingLegIds(legs);
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      reason: "deleted_legs",
+      unavailableLegIds: estimate.ok ? [] : estimate.unavailableLegIds,
+      missingLegIds: missing,
+      legSources: estimate.legSources,
+    };
+  }
+  return { ...estimate, missingLegIds: [] };
+}
+
+/**
+ * The present legs the resolver found no price for, in slip order: what the
+ * Mark Placed confirm warns about and what placement checks the user's
+ * consent against (INV-17). A leg priced from its capture price is priced;
+ * only a resolution of "unavailable" counts.
+ */
+export function unpricedLegIds(estimate: { legSources: readonly ResolvedLegPrice[] }): string[] {
+  return estimate.legSources.filter((leg) => leg.source === "unavailable").map((leg) => leg.ideaId);
 }
 
 export function calculatePayoutCents(stakeCents: number, decimalOdds: number): number {

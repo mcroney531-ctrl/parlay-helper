@@ -74,6 +74,17 @@ describe("cloneCandidate", () => {
     const all = await listCandidates();
     expect(all).toHaveLength(2);
   });
+
+  it("keeps a leg whose idea was deleted, in place, so the clone shows it as a removable deleted leg", async () => {
+    const kept = await captureInstantIdea("Kept leg");
+    const candidate = await createCandidate("Sunday Core", "FanDuel");
+    await addLegToCandidate(candidate.id, kept.id);
+    // An idea id with no idea behind it: what a deleted idea leaves in a slip.
+    await addLegToCandidate(candidate.id, "deleted-idea");
+
+    const clone = await cloneCandidate(candidate.id);
+    expect(clone.ideaIds).toEqual([kept.id, "deleted-idea"]);
+  });
 });
 
 describe("adding legs is never gated on priceability (permanent control)", () => {
