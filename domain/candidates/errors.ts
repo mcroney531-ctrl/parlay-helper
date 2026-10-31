@@ -66,8 +66,8 @@ export class UnpricedConsentError extends Error {
   ) {
     super(
       unacknowledgedLegIds.length === 1
-        ? "A leg has no current price that you didn't confirm. Review the slip and confirm again."
-        : `${unacknowledgedLegIds.length} legs have no current price that you didn't confirm. Review the slip and confirm again.`,
+        ? "A leg has no current price, and you weren't warned about it. Review the slip and confirm again."
+        : `${unacknowledgedLegIds.length} legs have no current price, and you weren't warned about them. Review the slip and confirm again.`,
     );
     this.name = "UnpricedConsentError";
   }

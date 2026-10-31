@@ -24,7 +24,7 @@ export function placedSlipFor(record: FinalizedParlay, candidates: CandidateParl
 export function unclonableRecordNote(record: FinalizedParlay, slip: CandidateParlay | null): string | null {
   if (slip) return null;
   return record.candidateId
-    ? "Its slip was deleted; can't be cloned."
+    ? "Original slip deleted; can't be cloned."
     : "Placed before slip tracking; can't be cloned.";
 }
 

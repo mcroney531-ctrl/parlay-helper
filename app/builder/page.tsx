@@ -195,6 +195,7 @@ export default function BuilderPage() {
 
                   <EstimatePanel
                     estimate={estimate}
+                    sportsbook={candidate.sportsbook}
                     stakeCents={candidate.stakeCents}
                     payoutCents={payoutCents}
                     isSameGame={signals.sameGame}

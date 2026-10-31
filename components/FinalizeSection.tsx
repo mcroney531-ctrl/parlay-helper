@@ -72,8 +72,8 @@ export function markPlacedQuestion(
 export function otherBookCaptureNote(count: number): string | null {
   if (count === 0) return null;
   return count === 1
-    ? "1 leg uses a captured price from a book not confirmed to be this slip's."
-    : `${count} legs use captured prices from a book not confirmed to be this slip's.`;
+    ? "1 leg uses a captured price from a book not confirmed to be this slip's book."
+    : `${count} legs use captured prices from books not confirmed to be this slip's book.`;
 }
 
 /**
@@ -174,6 +174,10 @@ export function FinalizeSection({
       : deletedLegCount > 0
         ? `Remove the deleted leg${deletedLegCount === 1 ? "" : "s"} before marking it placed.`
         : null;
+  // Once Mark Placed is blocked, an open confirm is closed for good: its
+  // counts were frozen before the slip changed, so it must never reappear
+  // when the block clears. The user taps Mark Placed again for a fresh one.
+  if (blockedReason && confirming) setConfirming(false);
 
   async function handleFinalize() {
     setSaving(true);

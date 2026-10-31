@@ -44,7 +44,7 @@ describe("a slip with a deleted leg", () => {
 
   it("the estimate says why it can't be calculated", () => {
     const estimate: SlipEstimate = { ok: false, reason: "deleted_legs", unavailableLegIds: [], missingLegIds: ["x", "y"], legSources: [] };
-    const out = text(renderToStaticMarkup(<EstimatePanel estimate={estimate} stakeCents={200} payoutCents={null} isSameGame={false} />));
+    const out = text(renderToStaticMarkup(<EstimatePanel estimate={estimate} sportsbook="DraftKings" stakeCents={200} payoutCents={null} isSameGame={false} />));
     expect(out).toContain("Estimate cannot be calculated — 2 legs' ideas were deleted. Remove them to see an estimate.");
   });
 
@@ -78,13 +78,13 @@ describe("a slip with a deleted leg", () => {
 describe("the confirm names capture prices from another book", () => {
   it("says how many legs use a capture price from a book not confirmed to be the slip's", () => {
     expect(otherBookCaptureNote(0)).toBeNull();
-    expect(otherBookCaptureNote(1)).toBe("1 leg uses a captured price from a book not confirmed to be this slip's.");
+    expect(otherBookCaptureNote(1)).toBe("1 leg uses a captured price from a book not confirmed to be this slip's book.");
     const out = text(
       renderToStaticMarkup(
         <MarkPlacedConfirm slipName="Sunday" legCount={3} otherBookCaptureCount={2} saving={false} onConfirm={() => {}} onCancel={() => {}} />,
       ),
     );
-    expect(out).toContain("2 legs use captured prices from a book not confirmed to be this slip's.");
+    expect(out).toContain("2 legs use captured prices from books not confirmed to be this slip's book.");
   });
 });
 
@@ -96,7 +96,7 @@ describe("History records that can't be cloned", () => {
   });
 
   it("a record whose slip was deleted says so", () => {
-    expect(unclonableRecordNote(record("gone"), null)).toBe("Its slip was deleted; can't be cloned.");
+    expect(unclonableRecordNote(record("gone"), null)).toBe("Original slip deleted; can't be cloned.");
   });
 
   it("a record whose slip still exists has no note: it can be cloned", () => {
