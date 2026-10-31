@@ -14,27 +14,15 @@ import { PageShell } from "@/components/PageShell";
 import { BuildIcon, PlusIcon } from "@/components/icons";
 import { Button } from "@/components/FormControls";
 import { NoCurrentSlip } from "@/components/NoCurrentSlip";
-import {
-  calculateCombinedEstimate,
-  calculatePayoutCents,
-  hasSameGameCombination,
-  legPriceInputs,
-  unpricedLegIds,
-} from "@/domain/odds/estimate";
+import { DeletedLegCard } from "@/components/DeletedLegCard";
+import { calculatePayoutCents, calculateSlipEstimate, unpricedLegIds } from "@/domain/odds/estimate";
 import { SportsbookSupportHint } from "@/components/SportsbookSupportHint";
-import { detectCorrelationSignals } from "@/domain/rules/correlation";
-import { detectConcentrationSignals } from "@/domain/rules/concentration";
+import { detectSlipSignals } from "@/domain/rules/slipSignals";
 import { removeLegFromCandidate } from "@/domain/candidates/candidateService";
 import { candidateRevision } from "@/domain/candidates/candidateState";
+import { ideaLookup, presentIdeas, resolveSlipLegs } from "@/domain/candidates/slipLegs";
 import { describeRefreshNotice, describeRefreshProblem, refreshCandidateContext } from "@/domain/odds/refreshService";
 import { liveContextKey } from "@/storage/indexeddb/repositories/liveContextRepository";
-
-function kickoffWindowFor(scheduledStart: string | null): string | null {
-  if (!scheduledStart) return null;
-  const date = new Date(scheduledStart);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString().slice(0, 13); // hour-granularity bucket
-}
 
 export default function BuilderPage() {
   const {
@@ -59,30 +47,19 @@ export default function BuilderPage() {
     return liveContextByKey[liveContextKey(ideaId, sportsbook)];
   }
 
-  const legs = candidate
-    ? candidate.ideaIds.map((id) => ideas.find((idea) => idea.id === id)).filter((v) => v !== undefined)
-    : [];
+  // Every stored leg, in order. A leg whose idea was deleted stays on the slip
+  // as a deleted leg the user can remove; it is never silently dropped.
+  const legs = candidate ? resolveSlipLegs(candidate.ideaIds, ideaLookup(ideas)) : [];
+  const present = presentIdeas(legs);
 
-  const estimate = calculateCombinedEstimate(legPriceInputs(legs, sportsbook, liveContextFor));
-  const unpricedLegCount = estimate.legSources.filter((leg) => leg.source === "unavailable").length;
+  const estimate = calculateSlipEstimate(legs, sportsbook, liveContextFor);
+  const unpriced = unpricedLegIds(estimate);
+  const resolvedPrice = new Map(estimate.legSources.map((leg) => [leg.ideaId, leg]));
 
   const payoutCents =
     estimate.ok && candidate ? calculatePayoutCents(candidate.stakeCents, estimate.decimalOdds) : null;
 
-  const isSameGame = hasSameGameCombination(legs.map((leg) => ({ eventId: leg.eventId })));
-
-  const correlationSignals = detectCorrelationSignals(
-    legs.map((leg) => ({ ideaId: leg.id, eventId: leg.eventId })),
-  );
-
-  const concentrationSignals = detectConcentrationSignals(
-    legs.map((leg) => ({
-      ideaId: leg.id,
-      eventId: leg.eventId,
-      team: leg.team,
-      kickoffWindow: kickoffWindowFor(liveContextFor(leg.id)?.scheduledStart ?? null),
-    })),
-  );
+  const signals = detectSlipSignals(legs, (ideaId) => liveContextFor(ideaId)?.scheduledStart ?? null);
 
   async function handleRemoveLeg(ideaId: string) {
     if (!candidate) return;
@@ -184,7 +161,8 @@ export default function BuilderPage() {
                 legCount={legs.length}
                 estimatedOddsAmerican={estimate.ok ? estimate.americanOdds : null}
                 estimatedPayoutCents={payoutCents}
-                unpricedLegCount={unpricedLegCount}
+                unpricedLegCount={unpriced.length}
+                deletedLegCount={estimate.missingLegIds.length}
                 expanded={expanded}
                 onToggle={() => setExpanded((v) => !v)}
               />
@@ -192,24 +170,34 @@ export default function BuilderPage() {
               {expanded && (
                 <div className="flex flex-col gap-4">
                   <ul className="flex flex-col gap-2.5">
-                    {legs.map((leg) => (
-                      <PropLegCard
-                        key={leg.id}
-                        idea={leg}
-                        liveContext={liveContextFor(leg.id)}
-                        slipSportsbook={sportsbook}
-                        onRemove={() => handleRemoveLeg(leg.id)}
-                      />
-                    ))}
+                    {legs.map((leg) =>
+                      leg.kind === "present" ? (
+                        <PropLegCard
+                          key={leg.ideaId}
+                          idea={leg.idea}
+                          liveContext={liveContextFor(leg.ideaId)}
+                          slipSportsbook={sportsbook}
+                          resolvedPrice={resolvedPrice.get(leg.ideaId)}
+                          onRemove={() => handleRemoveLeg(leg.ideaId)}
+                        />
+                      ) : (
+                        <DeletedLegCard key={leg.ideaId} onRemove={() => handleRemoveLeg(leg.ideaId)} />
+                      ),
+                    )}
                   </ul>
 
-                  <RuleBanners correlationSignals={correlationSignals} concentrationSignals={concentrationSignals} legs={legs} />
+                  <RuleBanners
+                    correlationSignals={signals.correlation}
+                    concentrationSignals={signals.concentration}
+                    legs={present}
+                    deletedLegCount={signals.deletedLegCount}
+                  />
 
                   <EstimatePanel
                     estimate={estimate}
                     stakeCents={candidate.stakeCents}
                     payoutCents={payoutCents}
-                    isSameGame={isSameGame}
+                    isSameGame={signals.sameGame}
                   />
 
                   <PromoAndStakePanel candidate={candidate} />
@@ -221,7 +209,11 @@ export default function BuilderPage() {
                     slipName={candidate.name}
                     seenRevision={candidateRevision(candidate)}
                     legCount={legs.length}
-                    unpricedLegIds={unpricedLegIds(estimate)}
+                    unpricedLegIds={unpriced}
+                    deletedLegCount={estimate.missingLegIds.length}
+                    otherBookCaptureCount={
+                      estimate.legSources.filter((leg) => leg.source === "capture" && leg.captureBook?.match !== "same").length
+                    }
                   />
                 </div>
               )}

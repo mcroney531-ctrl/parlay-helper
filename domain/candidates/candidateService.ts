@@ -23,7 +23,7 @@ export async function createCandidate(name: string, sportsbook: string): Promise
   const timestamp = nowISO();
   const candidate: CandidateParlay = {
     id: newId(),
-    name: name.trim() || "Untitled candidate",
+    name: name.trim() || "Untitled slip",
     sportsbook,
     ideaIds: [],
     stakeCents: DEFAULT_STAKE_CENTS,

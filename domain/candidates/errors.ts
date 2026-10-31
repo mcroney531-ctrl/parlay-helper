@@ -50,9 +50,11 @@ export class DeletedLegsError extends Error {
 
 /**
  * INV-17: at commit, legs had no current price that the user wasn't warned
- * about when they confirmed (a price disappeared in between). Placement never
- * goes ahead on prices the user didn't agree to; nothing was written, and the
- * confirm has to be shown again with the current set.
+ * about when they confirmed. Usually a price disappeared in between, but the
+ * leg may never have had one, or no consent was passed at all, so the message
+ * doesn't claim which. Placement never goes ahead on prices the user didn't
+ * agree to; nothing was written, and the confirm has to be shown again with
+ * the current set.
  */
 export class UnpricedConsentError extends Error {
   constructor(
@@ -64,8 +66,8 @@ export class UnpricedConsentError extends Error {
   ) {
     super(
       unacknowledgedLegIds.length === 1
-        ? "A leg no longer has a current price. Review the slip and confirm again."
-        : `${unacknowledgedLegIds.length} legs no longer have a current price. Review the slip and confirm again.`,
+        ? "A leg has no current price that you didn't confirm. Review the slip and confirm again."
+        : `${unacknowledgedLegIds.length} legs have no current price that you didn't confirm. Review the slip and confirm again.`,
     );
     this.name = "UnpricedConsentError";
   }

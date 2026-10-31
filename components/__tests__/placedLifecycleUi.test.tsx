@@ -50,7 +50,7 @@ beforeEach(() => {
 describe("Mark Placed has a confirm step (INV-1)", () => {
   it("before a tap: only the Mark Placed button, no confirmation yet", () => {
     data.value = { refreshCandidates: noop, refreshFinalized: noop, setActiveCandidateId: () => {} };
-    const html = renderToStaticMarkup(<FinalizeSection candidateId="s1" slipName="Sunday Core" seenRevision={0} legCount={2} unpricedLegIds={[]} />);
+    const html = renderToStaticMarkup(<FinalizeSection candidateId="s1" slipName="Sunday Core" seenRevision={0} legCount={2} unpricedLegIds={[]} deletedLegCount={0} otherBookCaptureCount={0} />);
     expect(html).toMatch(/<button[^>]*>Mark Placed<\/button>/);
     expect(html).not.toContain("Confirm Mark Placed");
   });

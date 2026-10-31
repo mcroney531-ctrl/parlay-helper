@@ -2,6 +2,8 @@
 
 import type { CapturedIdea, LiveContext } from "@/domain/types";
 import { buildChangeRadar, type ChangeRadarEntry } from "@/domain/odds/changeRadar";
+import type { ResolvedLegPrice } from "@/domain/odds/estimate";
+import { describeLegPrice, type LegPriceTone } from "@/domain/odds/priceSource";
 import { describePriceBlockers, priceBlockers } from "@/domain/odds/refreshability";
 import { PlayerAvatar } from "@/components/PlayerAvatar";
 import { sleeperHeadshotUrl } from "@/components/sleeperImage";
@@ -22,17 +24,27 @@ const RADAR_TONE: Record<ChangeRadarEntry["kind"], string> = {
   not_found: "var(--color-missing-fg)",
 };
 
+const PRICE_TONE: Record<LegPriceTone, string> = {
+  neutral: "var(--color-muted)",
+  caution: "var(--color-caution-fg)",
+  missing: "var(--color-missing-fg)",
+};
+
 export function PropLegCard({
   idea,
   liveContext,
   slipSportsbook,
+  resolvedPrice,
   onRemove,
 }: {
   idea: CapturedIdea;
   liveContext: LiveContext | undefined;
   slipSportsbook: string;
+  /** This leg's price as the slip's estimate resolved it (INV-12), so the card names the source the estimate uses. */
+  resolvedPrice: ResolvedLegPrice | undefined;
   onRemove: () => void;
 }) {
+  const price = resolvedPrice ? describeLegPrice(resolvedPrice, slipSportsbook) : null;
   const blockers = priceBlockers(idea, slipSportsbook);
   const blockedText = describePriceBlockers(blockers, slipSportsbook);
   const radar = buildChangeRadar(idea, liveContext, blockers.length > 0);
@@ -62,7 +74,7 @@ export function PropLegCard({
               {idea.playerName ?? idea.rawText}
               {idea.team ? <span style={{ color: "var(--color-muted)" }}> · {idea.team}</span> : null}
             </p>
-            <Button variant="text" onClick={onRemove} aria-label={`Remove ${idea.playerName ?? idea.rawText} from this candidate`}>
+            <Button variant="text" onClick={onRemove} aria-label={`Remove ${idea.playerName ?? idea.rawText} from this slip`}>
               Remove
             </Button>
           </div>
@@ -75,6 +87,11 @@ export function PropLegCard({
           )}
 
           <ul className="mt-1 flex flex-col gap-0.5">
+            {price && (
+              <li className="text-sm font-medium" style={{ color: PRICE_TONE[price.tone] }}>
+                {price.text}
+              </li>
+            )}
             {blockedText && (
               <li className="flex items-start gap-1.5 text-sm font-medium" style={{ color: "var(--color-missing-fg)" }}>
                 <AlertCircleIcon className="mt-0.5 h-4 w-4 shrink-0" />

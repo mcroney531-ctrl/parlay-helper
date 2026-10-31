@@ -1,4 +1,4 @@
-import type { CombinedEstimate } from "@/domain/odds/estimate";
+import type { SlipEstimate } from "@/domain/odds/estimate";
 import { Card } from "@/components/Card";
 import { InfoIcon } from "@/components/icons";
 
@@ -16,7 +16,7 @@ export function EstimatePanel({
   payoutCents,
   isSameGame,
 }: {
-  estimate: CombinedEstimate;
+  estimate: SlipEstimate;
   stakeCents: number;
   payoutCents: number | null;
   isSameGame: boolean;
@@ -57,6 +57,13 @@ export function EstimatePanel({
               ? ` ${notOffered} of those ${notOffered === 1 ? "is" : "are"} not currently offered by this sportsbook.`
               : "";
           })()}
+        </p>
+      )}
+      {!estimate.ok && estimate.reason === "deleted_legs" && (
+        <p className="mt-2 text-xs font-medium" style={{ color: "var(--color-danger)" }}>
+          Estimate cannot be calculated — {estimate.missingLegIds.length} leg
+          {estimate.missingLegIds.length === 1 ? "'s idea was" : "s' ideas were"} deleted. Remove{" "}
+          {estimate.missingLegIds.length === 1 ? "it" : "them"} to see an estimate.
         </p>
       )}
       {!estimate.ok && estimate.reason === "no_legs" && (

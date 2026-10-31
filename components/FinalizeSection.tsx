@@ -65,6 +65,18 @@ export function markPlacedQuestion(
 }
 
 /**
+ * Said in the confirm when legs fall back to a capture price from a book not
+ * confirmed to be the slip's: that can happen silently when a live price
+ * disappears, so the confirm names it.
+ */
+export function otherBookCaptureNote(count: number): string | null {
+  if (count === 0) return null;
+  return count === 1
+    ? "1 leg uses a captured price from a book not confirmed to be this slip's."
+    : `${count} legs use captured prices from a book not confirmed to be this slip's.`;
+}
+
+/**
  * The confirm step before a slip is placed (INV-1: placing is permanent, so a
  * mis-tap is caught here rather than undone later). Pure, so it can be
  * rendered on its own in tests.
@@ -73,6 +85,7 @@ export function MarkPlacedConfirm({
   slipName,
   unpricedCount = 0,
   legCount = 0,
+  otherBookCaptureCount = 0,
   saving,
   onConfirm,
   onCancel,
@@ -81,16 +94,24 @@ export function MarkPlacedConfirm({
   /** Legs shown as having no current price; what confirming consents to. */
   unpricedCount?: number;
   legCount?: number;
+  /** Legs priced from a capture price at a book not confirmed to be the slip's. Said, not consented to: a capture price is a price. */
+  otherBookCaptureCount?: number;
   saving: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
   const { warning, question } = markPlacedQuestion(slipName, unpricedCount, legCount);
+  const otherBook = otherBookCaptureNote(otherBookCaptureCount);
   return (
     <div role="group" aria-label="Confirm Mark Placed" className="flex flex-col gap-2 rounded-[var(--radius-control)] border p-3" style={{ borderColor: "var(--color-border)" }}>
       {warning && (
         <p className="text-sm font-medium" style={{ color: "var(--color-missing-fg)" }}>
           {warning}
+        </p>
+      )}
+      {otherBook && (
+        <p className="text-xs font-medium" style={{ color: "var(--color-caution-fg)" }}>
+          {otherBook}
         </p>
       )}
       <p className="text-sm font-semibold" style={{ color: "var(--color-ink)" }}>
@@ -118,14 +139,20 @@ export function FinalizeSection({
   seenRevision,
   legCount,
   unpricedLegIds,
+  deletedLegCount,
+  otherBookCaptureCount,
 }: {
   candidateId: string;
   slipName: string;
   /** The revision of the candidate as rendered: placement is rejected if it changed since (INV-6). */
   seenRevision: number;
+  /** Every stored leg, deleted ones included. */
   legCount: number;
   /** Legs the Slip screen's estimate has no price for, from the same resolver placement uses (INV-12). */
   unpricedLegIds: string[];
+  /** Legs whose idea was deleted: Mark Placed is blocked until they're removed, and consent never covers them. */
+  deletedLegCount: number;
+  otherBookCaptureCount: number;
 }) {
   const router = useRouter();
   const { refreshCandidates, refreshFinalized, refreshIdeas, refreshLiveContext, setActiveCandidateId } = useData();
@@ -139,7 +166,14 @@ export function FinalizeSection({
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [acknowledgedOtherBook, setAcknowledgedOtherBook] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const blockedReason =
+    legCount === 0
+      ? "Add at least one leg before marking it placed."
+      : deletedLegCount > 0
+        ? `Remove the deleted leg${deletedLegCount === 1 ? "" : "s"} before marking it placed.`
+        : null;
 
   async function handleFinalize() {
     setSaving(true);
@@ -164,7 +198,7 @@ export function FinalizeSection({
       if (err instanceof UnpricedConsentError || err instanceof DeletedLegsError) {
         await Promise.all([refreshCandidates(), refreshIdeas(), refreshLiveContext()]);
       }
-      setError(err instanceof Error ? err.message : "Could not finalize.");
+      setError(err instanceof Error ? err.message : "Could not mark this slip placed.");
       setConfirming(false);
     } finally {
       setSaving(false);
@@ -179,7 +213,7 @@ export function FinalizeSection({
         </summary>
         <div className="mt-3 flex flex-col gap-3">
           <p className="text-xs" style={{ color: "var(--color-muted)" }}>
-            Recorded alongside the estimate at finalize time — never edited afterward.
+            Recorded alongside the estimate when the slip is placed — never edited afterward.
           </p>
           <div className="flex flex-wrap gap-3">
             <Field label="Actual odds (American)">
@@ -198,11 +232,12 @@ export function FinalizeSection({
         </div>
       </details>
 
-      {confirming ? (
+      {confirming && !blockedReason ? (
         <MarkPlacedConfirm
           slipName={slipName}
           unpricedCount={acknowledgedUnpriced.length}
           legCount={legCount}
+          otherBookCaptureCount={acknowledgedOtherBook}
           saving={saving}
           onConfirm={handleFinalize}
           onCancel={() => setConfirming(false)}
@@ -211,17 +246,18 @@ export function FinalizeSection({
         <Button
           onClick={() => {
             setAcknowledgedUnpriced(unpricedLegIds);
+            setAcknowledgedOtherBook(otherBookCaptureCount);
             setConfirming(true);
           }}
-          disabled={legCount === 0}
+          disabled={blockedReason !== null}
           className="w-full"
         >
           Mark Placed
         </Button>
       )}
-      {legCount === 0 && (
-        <p className="text-xs" style={{ color: "var(--color-muted)" }}>
-          Add at least one leg before finalizing.
+      {blockedReason && (
+        <p className="text-xs" style={{ color: deletedLegCount > 0 ? "var(--color-missing-fg)" : "var(--color-muted)" }}>
+          {blockedReason}
         </p>
       )}
       {error && (

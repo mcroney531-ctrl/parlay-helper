@@ -30,7 +30,7 @@ test("Clone from History opens a new current copy; Delete removes the placed sli
   expect(await confirmText).toContain("History record stays");
 
   await expect(page.getByRole("button", { name: "Clone to new slip" })).toHaveCount(0);
-  await expect(page.getByText("1 finalized slip")).toBeVisible();
+  await expect(page.getByText("1 placed slip")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Sunday Core", exact: true })).toBeVisible();
 
   // The clone is untouched by deleting the placed slip.

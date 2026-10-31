@@ -99,6 +99,7 @@ describe("PropLegCard: why a leg has no live price", () => {
           idea={makeIdea({ eventId: null, marketKey: null, league: null, marketLabel: null, selection: null })}
           liveContext={undefined}
           slipSportsbook="FanDuel"
+          resolvedPrice={undefined}
           onRemove={() => {}}
         />,
       ),
@@ -108,19 +109,19 @@ describe("PropLegCard: why a leg has no live price", () => {
   });
 
   it("a leg on an unsupported book says so before any refresh, with the supported list", () => {
-    const out = text(renderToStaticMarkup(<PropLegCard idea={makeIdea()} liveContext={undefined} slipSportsbook="Bet365" onRemove={() => {}} />));
+    const out = text(renderToStaticMarkup(<PropLegCard idea={makeIdea()} liveContext={undefined} slipSportsbook="Bet365" resolvedPrice={undefined} onRemove={() => {}} />));
     expect(out).toContain('Live odds aren\'t available for "Bet365" (supported: FanDuel, DraftKings, BetMGM, Caesars, ESPN BET).');
   });
 
   it("a refreshable leg on a supported book is unchanged", () => {
-    const out = text(renderToStaticMarkup(<PropLegCard idea={makeIdea()} liveContext={undefined} slipSportsbook="DK" onRemove={() => {}} />));
+    const out = text(renderToStaticMarkup(<PropLegCard idea={makeIdea()} liveContext={undefined} slipSportsbook="DK" resolvedPrice={undefined} onRemove={() => {}} />));
     expect(out).toContain("No current data fetched yet for this leg.");
     expect(out).not.toMatch(/No live price|aren't available/);
   });
 });
 
 describe("BuilderTray", () => {
-  const tray = (legCount: number, unpriced: number, odds: number | null = null, payout: number | null = null) =>
+  const tray = (legCount: number, unpriced: number, odds: number | null = null, payout: number | null = null, deleted = 0) =>
     text(
       renderToStaticMarkup(
         <BuilderTray
@@ -128,6 +129,7 @@ describe("BuilderTray", () => {
           estimatedOddsAmerican={odds}
           estimatedPayoutCents={payout}
           unpricedLegCount={unpriced}
+          deletedLegCount={deleted}
           expanded={false}
           onToggle={() => {}}
         />,
