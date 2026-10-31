@@ -8,7 +8,8 @@ import { CheckCircleIcon } from "@/components/icons";
 
 const DRAFT_KEY = "parlay-helper:quick-add-draft";
 
-export function QuickAddForm() {
+/** autoFocus is off in add mode, where the user came to pick ideas, not type one. */
+export function QuickAddForm({ autoFocus = true }: { autoFocus?: boolean }) {
   const { refreshIdeas } = useData();
   const [text, setText] = useState(() => {
     try {
@@ -41,7 +42,7 @@ export function QuickAddForm() {
     try {
       await captureInstantIdea(text);
       setText("");
-      setSavedMessage("Saved to Bucket.");
+      setSavedMessage("Saved to Ideas.");
       await refreshIdeas();
       inputRef.current?.focus();
       window.setTimeout(() => setSavedMessage(null), 2500);
@@ -74,7 +75,7 @@ export function QuickAddForm() {
         rows={3}
         className="text-base"
         style={{ background: "var(--color-canvas)" }}
-        autoFocus
+        autoFocus={autoFocus}
       />
       <Button type="submit" disabled={!text.trim() || saving} className="w-full">
         {saving ? "Saving…" : "Save idea"}

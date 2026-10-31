@@ -7,6 +7,7 @@ import { Button, TextInput } from "@/components/FormControls";
 import { SportsbookSupportHint } from "@/components/SportsbookSupportHint";
 import { createCandidate } from "@/domain/candidates/candidateService";
 import { isPlaced } from "@/domain/candidates/candidateState";
+import { readLastSportsbook, rememberSportsbook } from "@/components/lastSportsbook";
 
 /**
  * The Slip screen when there is no current slip: right after a placement (the
@@ -50,9 +51,22 @@ export function NoCurrentSlip() {
   );
 }
 
-function NewSlipForm({ title, onCreated }: { title: string; onCreated: (id: string) => Promise<void> }) {
+/**
+ * Starts a slip. Used on the Slip screen and, inline, on an Ideas card's
+ * first add. The book defaults to the last one used on this device.
+ */
+export function NewSlipForm({
+  title,
+  onCreated,
+  inline = false,
+}: {
+  title: string;
+  onCreated: (id: string, name: string) => Promise<void>;
+  /** Compact, inside an Ideas card, with no explainer. */
+  inline?: boolean;
+}) {
   const [name, setName] = useState("Sunday Core");
-  const [sportsbook, setSportsbook] = useState("");
+  const [sportsbook, setSportsbook] = useState(readLastSportsbook);
   const [creating, setCreating] = useState(false);
 
   async function handleCreate(e: React.FormEvent) {
@@ -61,21 +75,27 @@ function NewSlipForm({ title, onCreated }: { title: string; onCreated: (id: stri
     setCreating(true);
     try {
       const candidate = await createCandidate(name, sportsbook);
-      await onCreated(candidate.id);
+      rememberSportsbook(sportsbook);
+      await onCreated(candidate.id, candidate.name);
     } finally {
       setCreating(false);
     }
   }
 
   return (
-    <div className="flex flex-col items-center gap-4 rounded-[var(--radius-card)] border px-4 py-10 text-center" style={{ borderColor: "var(--color-border)" }}>
-      <p className="text-base font-semibold" style={{ color: "var(--color-ink)" }}>
+    <div
+      className={inline ? "flex flex-col gap-2" : "flex flex-col items-center gap-4 rounded-[var(--radius-card)] border px-4 py-10 text-center"}
+      style={inline ? undefined : { borderColor: "var(--color-border)" }}
+    >
+      <p className={inline ? "text-sm font-semibold" : "text-base font-semibold"} style={{ color: "var(--color-ink)" }}>
         {title}
       </p>
-      <p className="max-w-xs text-sm" style={{ color: "var(--color-muted)" }}>
-        A slip is book-specific — pick the sportsbook you&rsquo;ll actually place this on.
-      </p>
-      <form onSubmit={handleCreate} className="flex w-full max-w-xs flex-col gap-3">
+      {!inline && (
+        <p className="max-w-xs text-sm" style={{ color: "var(--color-muted)" }}>
+          A slip is book-specific — pick the sportsbook you&rsquo;ll actually place this on.
+        </p>
+      )}
+      <form onSubmit={handleCreate} className={inline ? "flex w-full flex-col gap-2" : "flex w-full max-w-xs flex-col gap-3"} aria-label={title}>
         <label className="flex flex-col gap-1 text-left text-xs font-semibold" style={{ color: "var(--color-muted)" }}>
           Name
           <TextInput value={name} onChange={(e) => setName(e.target.value)} placeholder="Sunday Core" />

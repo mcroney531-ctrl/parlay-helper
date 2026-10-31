@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import type { CapturedIdea } from "@/domain/types";
+import type { CandidateParlay, CapturedIdea } from "@/domain/types";
 import { ConfidenceBadge } from "@/components/ConfidenceBadge";
 import { PlayerAvatar } from "@/components/PlayerAvatar";
 import { sleeperHeadshotUrl } from "@/components/sleeperImage";
@@ -14,24 +14,46 @@ import { valuesToPatch, type StructuredFormValues } from "@/components/Structure
 import { archiveIdea, unarchiveIdea, updateIdeaDetails } from "@/domain/ideas/ideaService";
 import { addLegToCandidate } from "@/domain/candidates/candidateService";
 import { isPlaced } from "@/domain/candidates/candidateState";
+import { draftSlipCount, isIdeaPlaced, type IdeaUsage } from "@/domain/ideas/ideaUsage";
+import { missingDetailsText } from "@/domain/odds/refreshability";
+import { FirstAddPrompt } from "@/components/FirstAddPrompt";
 import { useData } from "@/app/DataProvider";
 
+/** The usage badges for an idea, from the one shared usage result (so they always agree with Hide placed). */
+export function usageBadges(usage: IdeaUsage, ideaId: string): string[] {
+  const badges: string[] = [];
+  if (isIdeaPlaced(usage, ideaId)) badges.push("Placed");
+  const drafts = draftSlipCount(usage, ideaId);
+  if (drafts > 0) badges.push(`In ${drafts} slip${drafts === 1 ? "" : "s"}`);
+  return badges;
+}
+
 /**
- * Shared idea card used by both Capture ("Recently Captured", compact) and
- * Bucket/Ideas (full — search/filter/archive/add-to-slip). The primary
- * action always matches the idea's actual state relative to the current
- * slip, instead of exposing a candidate-picker on every card.
+ * An idea on the Ideas screen. Its primary action is adding it to the
+ * target slip: the slip being filled in add mode, otherwise the current
+ * slip. Adding is never gated on details (chunk 3 decision (b)); the card
+ * names what's missing for live odds instead. With no current slip, Add
+ * opens an inline prompt to continue a draft or start a slip.
  */
-export function IdeaCard({ idea, variant }: { idea: CapturedIdea; variant: "compact" | "full" }) {
-  const { refreshIdeas, refreshCandidates, refreshLiveContext, candidates, activeCandidate, activeCandidateId } = useData();
+export function IdeaCard({ idea, usage, targetSlip }: { idea: CapturedIdea; usage: IdeaUsage; targetSlip: CandidateParlay | null }) {
+  const { refreshIdeas, refreshCandidates, refreshLiveContext, candidates } = useData();
   const [editing, setEditing] = useState(false);
+  const [choosingSlip, setChoosingSlip] = useState(false);
   const [addingToOther, setAddingToOther] = useState(false);
   const [otherCandidateId, setOtherCandidateId] = useState("");
   const [addedMessage, setAddedMessage] = useState<string | null>(null);
 
-  const inCurrentSlip = Boolean(activeCandidate?.ideaIds.includes(idea.id));
+  const targetSlipId = targetSlip?.id ?? null;
+  const inTargetSlip = Boolean(targetSlip?.ideaIds.includes(idea.id));
   // A placed slip can't take new legs (INV-2).
-  const otherCandidates = candidates.filter((c) => c.id !== activeCandidateId && !isPlaced(c));
+  const otherCandidates = candidates.filter((c) => c.id !== targetSlipId && !isPlaced(c));
+  const missingDetails = missingDetailsText(idea);
+  const badges = usageBadges(usage, idea.id);
+
+  function flash(message: string) {
+    setAddedMessage(message);
+    window.setTimeout(() => setAddedMessage(null), 2000);
+  }
 
   async function saveDetails(values: StructuredFormValues) {
     await updateIdeaDetails(idea.id, valuesToPatch(values));
@@ -42,7 +64,7 @@ export function IdeaCard({ idea, variant }: { idea: CapturedIdea; variant: "comp
   async function saveDetailsAndAddToSlip(values: StructuredFormValues) {
     await updateIdeaDetails(idea.id, valuesToPatch(values));
     await Promise.all([refreshIdeas(), refreshLiveContext()]);
-    if (activeCandidateId) await addLegToCandidate(activeCandidateId, idea.id);
+    if (targetSlipId) await addLegToCandidate(targetSlipId, idea.id);
     await refreshCandidates();
     setEditing(false);
   }
@@ -53,9 +75,9 @@ export function IdeaCard({ idea, variant }: { idea: CapturedIdea; variant: "comp
     await refreshIdeas();
   }
 
-  async function handleAddToCurrentSlip() {
-    if (!activeCandidateId) return;
-    await addLegToCandidate(activeCandidateId, idea.id);
+  async function handleAddToTargetSlip() {
+    if (!targetSlipId) return;
+    await addLegToCandidate(targetSlipId, idea.id);
     await refreshCandidates();
   }
 
@@ -64,9 +86,8 @@ export function IdeaCard({ idea, variant }: { idea: CapturedIdea; variant: "comp
     await addLegToCandidate(otherCandidateId, idea.id);
     await refreshCandidates();
     const candidate = candidates.find((c) => c.id === otherCandidateId);
-    setAddedMessage(`Added to ${candidate?.name ?? "slip"}.`);
+    flash(`Added to ${candidate?.name ?? "slip"}.`);
     setAddingToOther(false);
-    window.setTimeout(() => setAddedMessage(null), 2000);
   }
 
   const summary = [idea.playerName, idea.team, idea.marketLabel, idea.selection, idea.lineAtCapture]
@@ -79,7 +100,7 @@ export function IdeaCard({ idea, variant }: { idea: CapturedIdea; variant: "comp
         className="rounded-[var(--radius-card)] border-l-[3px] border-y border-r p-3"
         style={{
           borderColor: "var(--color-border)",
-          borderLeftColor: idea.detailsStatus === "needs_details" ? "var(--color-caution-fg)" : "var(--color-border)",
+          borderLeftColor: missingDetails ? "var(--color-caution-fg)" : "var(--color-border)",
           background: "var(--color-surface)",
           opacity: idea.archivedAt ? 0.6 : 1,
         }}
@@ -96,17 +117,19 @@ export function IdeaCard({ idea, variant }: { idea: CapturedIdea; variant: "comp
               </p>
             )}
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-              {idea.detailsStatus === "needs_details" ? (
-                <Pill tone="caution">Needs details</Pill>
-              ) : (
-                <ConfidenceBadge confidence={idea.confidence} />
-              )}
+              {missingDetails && <Pill tone="caution">{missingDetails}</Pill>}
+              {idea.detailsStatus !== "needs_details" && <ConfidenceBadge confidence={idea.confidence} />}
+              {badges.map((badge) => (
+                <Pill key={badge} tone={badge === "Placed" ? "info" : "neutral"}>
+                  {badge}
+                </Pill>
+              ))}
               {idea.archivedAt && <Pill tone="neutral">Archived</Pill>}
               <span className="text-xs" style={{ color: "var(--color-muted)" }}>
                 {new Date(idea.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
               </span>
             </div>
-            {variant === "full" && idea.note && (
+            {idea.note && (
               <p className="mt-1 text-xs italic" style={{ color: "var(--color-muted)" }}>
                 {idea.note}
               </p>
@@ -116,11 +139,7 @@ export function IdeaCard({ idea, variant }: { idea: CapturedIdea; variant: "comp
 
         {!idea.archivedAt && (
           <div className="mt-2.5 flex items-center gap-2 border-t pt-2.5" style={{ borderColor: "var(--color-border)" }}>
-            {idea.detailsStatus === "needs_details" ? (
-              <Button onClick={() => setEditing(true)} className="!min-h-[36px] flex-1 px-3 py-1.5 text-sm">
-                Complete details
-              </Button>
-            ) : inCurrentSlip ? (
+            {inTargetSlip ? (
               <>
                 <Pill tone="success" icon={<CheckIcon className="h-3 w-3" />}>
                   Added
@@ -129,20 +148,27 @@ export function IdeaCard({ idea, variant }: { idea: CapturedIdea; variant: "comp
                   View slip →
                 </Link>
               </>
-            ) : activeCandidateId ? (
-              <Button onClick={handleAddToCurrentSlip} className="!min-h-[36px] flex-1 px-3 py-1.5 text-sm">
-                Add to slip
+            ) : targetSlip ? (
+              <Button onClick={handleAddToTargetSlip} className="!min-h-[36px] flex-1 px-3 py-1.5 text-sm">
+                Add to {targetSlip.name}
               </Button>
             ) : (
-              <Link
-                href="/slip"
-                className="flex-1 rounded-[var(--radius-control)] px-3 py-1.5 text-center text-sm font-semibold text-white"
-                style={{ background: "var(--color-action)" }}
-              >
-                {otherCandidates.length > 0 ? "Pick a slip" : "Start a slip"}
-              </Link>
+              <Button onClick={() => setChoosingSlip((v) => !v)} aria-expanded={choosingSlip} className="!min-h-[36px] flex-1 px-3 py-1.5 text-sm">
+                Add to slip
+              </Button>
             )}
           </div>
+        )}
+
+        {choosingSlip && !targetSlip && !idea.archivedAt && (
+          <FirstAddPrompt
+            ideaId={idea.id}
+            onCancel={() => setChoosingSlip(false)}
+            onDone={(slipName) => {
+              setChoosingSlip(false);
+              flash(`Added to ${slipName}.`);
+            }}
+          />
         )}
 
         {addedMessage && (
@@ -152,17 +178,13 @@ export function IdeaCard({ idea, variant }: { idea: CapturedIdea; variant: "comp
         )}
 
         <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs">
-          {idea.detailsStatus !== "needs_details" && (
-            <Button variant="text" onClick={() => setEditing(true)} className="text-xs">
-              Edit details
-            </Button>
-          )}
-          {variant === "full" && (
-            <Button variant="text" onClick={handleArchiveToggle} className="text-xs" style={{ color: "var(--color-muted)" }}>
-              {idea.archivedAt ? "Unarchive" : "Archive"}
-            </Button>
-          )}
-          {variant === "full" && !idea.archivedAt && idea.detailsStatus !== "needs_details" && otherCandidates.length > 0 && (
+          <Button variant="text" onClick={() => setEditing(true)} className="text-xs">
+            {idea.detailsStatus === "needs_details" ? "Complete details" : "Edit details"}
+          </Button>
+          <Button variant="text" onClick={handleArchiveToggle} className="text-xs" style={{ color: "var(--color-muted)" }}>
+            {idea.archivedAt ? "Unarchive" : "Archive"}
+          </Button>
+          {!idea.archivedAt && otherCandidates.length > 0 && (
             <Button variant="text" onClick={() => setAddingToOther((v) => !v)} className="text-xs" style={{ color: "var(--color-muted)" }}>
               Add to another slip
             </Button>
@@ -191,8 +213,8 @@ export function IdeaCard({ idea, variant }: { idea: CapturedIdea; variant: "comp
           idea={idea}
           onClose={() => setEditing(false)}
           onSave={saveDetails}
-          slipName={activeCandidate?.name}
-          offerAddToSlip={!inCurrentSlip && Boolean(activeCandidateId)}
+          slipName={targetSlip?.name}
+          offerAddToSlip={!inTargetSlip && Boolean(targetSlipId)}
           onSaveAndAddToSlip={saveDetailsAndAddToSlip}
         />
       )}

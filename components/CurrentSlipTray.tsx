@@ -6,9 +6,8 @@ import { isPlaced } from "@/domain/candidates/candidateState";
 import { ChevronRightIcon } from "@/components/icons";
 
 /**
- * Persistent one-tap link to the current slip, shown on Capture and Ideas
- * so the user never has to remember "Build" is where their in-progress
- * candidate lives — it's surfaced everywhere that feeds it.
+ * Persistent one-tap link to the current slip, shown on Ideas so the user
+ * never has to go looking for where their in-progress slip lives.
  */
 export function CurrentSlipTray() {
   const { activeCandidate, candidates, finalized, lastSlipPlaced, loading } = useData();

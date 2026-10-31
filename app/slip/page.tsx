@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useData } from "@/app/DataProvider";
 import { CandidateSwitcher } from "@/components/CandidateSwitcher";
 import { BuilderTray } from "@/components/BuilderTray";
@@ -9,7 +10,6 @@ import { EstimatePanel } from "@/components/EstimatePanel";
 import { RuleBanners } from "@/components/RuleBanners";
 import { PromoAndStakePanel } from "@/components/PromoAndStakePanel";
 import { FinalizeSection } from "@/components/FinalizeSection";
-import { AddIdeasSheet } from "@/components/AddIdeasSheet";
 import { PageShell } from "@/components/PageShell";
 import { BuildIcon, PlusIcon } from "@/components/icons";
 import { Button } from "@/components/FormControls";
@@ -39,7 +39,7 @@ export default function BuilderPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
-  const [addingIdeas, setAddingIdeas] = useState(false);
+  const router = useRouter();
 
   const candidate = candidates.find((c) => c.id === activeCandidateId) ?? null;
   const sportsbook = candidate?.sportsbook ?? "";
@@ -133,7 +133,7 @@ export default function BuilderPage() {
               <p className="max-w-xs text-sm" style={{ color: "var(--color-muted)" }}>
                 Add a few ideas to see the estimated odds, correlation, and concentration context for this slip.
               </p>
-              <Button onClick={() => setAddingIdeas(true)} className="flex items-center gap-1.5">
+              <Button onClick={() => router.push(`/ideas?add=${candidate.id}`)} className="flex items-center gap-1.5">
                 <PlusIcon className="h-4 w-4" />
                 Add ideas
               </Button>
@@ -151,7 +151,7 @@ export default function BuilderPage() {
                   {legs.length} leg{legs.length === 1 ? "" : "s"}
                   <span aria-hidden="true">{expanded ? "▾" : "▸"}</span>
                 </button>
-                <Button variant="text" onClick={() => setAddingIdeas(true)} className="flex items-center gap-1 text-sm">
+                <Button variant="text" onClick={() => router.push(`/ideas?add=${candidate.id}`)} className="flex items-center gap-1 text-sm">
                   <PlusIcon className="h-3.5 w-3.5" />
                   Add ideas
                 </Button>
@@ -221,7 +221,6 @@ export default function BuilderPage() {
             </>
           )}
 
-          {addingIdeas && <AddIdeasSheet candidate={candidate} onClose={() => setAddingIdeas(false)} />}
         </div>
       )}
     </PageShell>
