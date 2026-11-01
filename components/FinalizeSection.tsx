@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useAppNavigate } from "@/components/appNavigation";
 import { finalizeCandidate } from "@/domain/history/finalizeService";
 import {
   AlreadyPlacedError,
@@ -154,7 +154,7 @@ export function FinalizeSection({
   deletedLegCount: number;
   otherBookCaptureCount: number;
 }) {
-  const router = useRouter();
+  const navigate = useAppNavigate();
   const { refreshCandidates, refreshFinalized, refreshIdeas, refreshLiveContext, setActiveCandidateId } = useData();
   // Frozen when the confirm is shown: what the user is warned about is all
   // they consent to (INV-17). A leg losing its price while the confirm is open
@@ -190,7 +190,7 @@ export function FinalizeSection({
         note,
         acknowledgedUnpricedLegIds: acknowledgedUnpriced,
       });
-      await completePlacement({ setActiveCandidateId, refreshCandidates, refreshFinalized, navigate: router.push });
+      await completePlacement({ setActiveCandidateId, refreshCandidates, refreshFinalized, navigate });
     } catch (err) {
       // The slip on screen is out of date: reload it so what's shown matches
       // what's stored before the user tries again.

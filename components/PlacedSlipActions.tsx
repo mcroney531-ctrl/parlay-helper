@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useAppNavigate } from "@/components/appNavigation";
 import type { CandidateParlay } from "@/domain/types";
 import { cloneCandidate, deleteCandidate } from "@/domain/candidates/candidateService";
 import { deletePlacedSlipConfirmText } from "@/domain/history/placedSlip";
@@ -36,7 +36,7 @@ export async function cloneToNewSlip(
  * but never the record (INV-15).
  */
 export function PlacedSlipActions({ slip }: { slip: CandidateParlay }) {
-  const router = useRouter();
+  const navigate = useAppNavigate();
   const { refreshCandidates, setActiveCandidateId } = useData();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,7 +45,7 @@ export function PlacedSlipActions({ slip }: { slip: CandidateParlay }) {
     setBusy(true);
     setError(null);
     try {
-      await cloneToNewSlip(slip.id, { refreshCandidates, setActiveCandidateId, navigate: router.push });
+      await cloneToNewSlip(slip.id, { refreshCandidates, setActiveCandidateId, navigate });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not clone this slip.");
       setBusy(false);

@@ -6,14 +6,27 @@ import { Button } from "@/components/FormControls";
 import { NewSlipForm } from "@/components/NoCurrentSlip";
 import { addLegToCandidate } from "@/domain/candidates/candidateService";
 import { isPlaced } from "@/domain/candidates/candidateState";
+import { addToNewSlip } from "@/components/addToNewSlip";
 
 /**
  * Shown inside an Ideas card when Add to slip is tapped with no current
  * slip: the idea is never left waiting while the user goes to find the Slip
  * screen. Continue a draft, or start a slip (book defaulting to the last one
- * used); either way the slip becomes current and the idea is its leg.
+ * used); either way the slip becomes current and the idea is its leg. If a
+ * new slip is created but the add fails, the slip still becomes current, and
+ * onFailed tells the card, whose own Add then retries into that slip.
  */
-export function FirstAddPrompt({ ideaId, onDone, onCancel }: { ideaId: string; onDone: (slipName: string) => void; onCancel: () => void }) {
+export function FirstAddPrompt({
+  ideaId,
+  onDone,
+  onFailed,
+  onCancel,
+}: {
+  ideaId: string;
+  onDone: (slipName: string) => void;
+  onFailed: (message: string) => void;
+  onCancel: () => void;
+}) {
   const { candidates, refreshCandidates, setActiveCandidateId } = useData();
   const [error, setError] = useState<string | null>(null);
   const drafts = candidates.filter((c) => !isPlaced(c));
@@ -50,7 +63,10 @@ export function FirstAddPrompt({ ideaId, onDone, onCancel }: { ideaId: string; o
         inline
         title={drafts.length > 0 ? "Or start a new slip" : "Start a slip for this idea"}
         onCreated={async (id, name) => {
-          await addTo(id, name);
+          setError(null);
+          const result = await addToNewSlip({ id, name }, ideaId, { addLeg: addLegToCandidate, setActive: setActiveCandidateId, refresh: refreshCandidates });
+          if (result.ok) onDone(name);
+          else onFailed(result.message);
         }}
       />
       {error && (

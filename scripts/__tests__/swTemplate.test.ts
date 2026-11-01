@@ -117,6 +117,7 @@ describe("service worker: offline navigation", () => {
     const sw = loadWorker("v1", offline);
     await sw.run("install");
     expect(await (await sw.request("/"))!.text()).toBe("page /ideas");
+    expect(await (await sw.request("/whatever?x=1"))!.text()).toBe("page /ideas");
   });
 
   it("never stores a response that followed a redirect", async () => {

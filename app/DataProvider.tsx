@@ -78,7 +78,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     try {
       setCandidates(await listCandidates());
     } catch (err) {
-      setStorageError(err instanceof Error ? err.message : "Failed to load candidates");
+      setStorageError(err instanceof Error ? err.message : "Failed to load your slips");
     }
   }, []);
 

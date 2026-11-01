@@ -132,7 +132,7 @@ function planPlacement(
     throw new StaleCandidateError(candidateId, seenRevision, candidateRevision(candidate));
   }
   if (candidate.ideaIds.length === 0) {
-    throw new Error("Cannot finalize a candidate with no legs");
+    throw new Error("This slip has no legs.");
   }
 
   const slipLegs = resolveSlipLegs(candidate.ideaIds, (ideaId) => ideas.get(ideaId));

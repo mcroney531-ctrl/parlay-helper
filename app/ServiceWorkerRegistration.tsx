@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/FormControls";
+import { requireFullPageLoads } from "@/components/appNavigation";
 
 export type UpdateState =
   /** Nothing to offer. */
@@ -85,7 +86,7 @@ export function updatePromptText(state: UpdateState): string | null {
     case "waiting":
       return "Update available.";
     case "updated_elsewhere":
-      return "The app was updated in another tab.";
+      return "The app was updated in another tab. Reload to keep using it.";
   }
 }
 
@@ -107,7 +108,12 @@ export function ServiceWorkerRegistration() {
       .then((reg) => {
         if (cancelled) return;
         registration = reg;
-        tracker.current = trackServiceWorkerUpdates(navigator.serviceWorker, reg, setState, () => window.location.reload());
+        const onChange = (next: UpdateState) => {
+          // This page's code is now older than the server and cache it runs against.
+          if (next.kind === "updated_elsewhere") requireFullPageLoads();
+          setState(next);
+        };
+        tracker.current = trackServiceWorkerUpdates(navigator.serviceWorker, reg, onChange, () => window.location.reload());
         document.addEventListener("visibilitychange", onVisible);
       })
       .catch(() => {

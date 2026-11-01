@@ -1,6 +1,8 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
+import { idea, seedV2 } from "./support/seed";
+import { EARLIER } from "./support/flows";
 
 // The real service worker in the production build: the "Update available"
 // prompt (Trevor's 3c decision) and the old screen names offline. Every other
@@ -49,6 +51,49 @@ test("a new version waits, the prompt offers it, and Reload applies it", async (
     await expect(page.getByText("Update available.")).toHaveCount(0);
   } finally {
     // Restored only now: a navigation's update check against the old script would install it again.
+    writeFileSync(SW_PATH, original);
+  }
+});
+
+/** Marks the current document, to tell a full page load (marker gone) from a client-side navigation (marker kept). */
+const markDocument = (page: Page) => page.evaluate(() => ((window as unknown as { sameDocument: boolean }).sameDocument = true));
+const sameDocument = (page: Page) => page.evaluate(() => Boolean((window as unknown as { sameDocument?: boolean }).sameDocument));
+
+test("after another tab applies the update, this tab says so and its next navigation is a full page load", async ({ page, context }) => {
+  await seedV2(page, {
+    ideas: [idea("i1", "Puka Nacua")],
+    slips: [{ id: "s1", name: "Sunday Core", sportsbook: "FanDuel", ideaIds: ["i1"], updatedAt: EARLIER }],
+  });
+  await openControlled(page);
+  const [v1] = await cacheNames(page);
+  // Two more tabs on the old version: one leaves by a link, one by a button that navigates in code.
+  const byLink = await context.newPage();
+  await byLink.goto("/slip");
+  const byButton = await context.newPage();
+  await byButton.goto("/slip");
+  for (const tab of [byLink, byButton]) await tab.waitForFunction(() => navigator.serviceWorker.controller !== null);
+
+  const original = readFileSync(SW_PATH, "utf8");
+  writeFileSync(SW_PATH, original.replace(v1, `${v1}-next`));
+  try {
+    await page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => r?.update()));
+    for (const tab of [page, byLink, byButton]) await expect(tab.getByText("Update available.")).toBeVisible();
+    await page.getByRole("button", { name: "Reload" }).click();
+
+    for (const tab of [byLink, byButton]) {
+      await expect(tab.getByText("The app was updated in another tab. Reload to keep using it.")).toBeVisible();
+      await markDocument(tab);
+    }
+
+    await byLink.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "History" }).click();
+    await expect(byLink).toHaveURL(/\/history$/);
+    expect(await sameDocument(byLink)).toBe(false);
+
+    await byButton.getByRole("button", { name: "Add ideas" }).first().click();
+    await expect(byButton).toHaveURL(/\/ideas\?add=s1$/);
+    expect(await sameDocument(byButton)).toBe(false);
+    await expect(byButton.getByRole("status").filter({ hasText: "Adding to Sunday Core" })).toBeVisible();
+  } finally {
     writeFileSync(SW_PATH, original);
   }
 });

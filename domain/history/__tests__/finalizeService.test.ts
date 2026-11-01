@@ -73,7 +73,7 @@ describe("finalizeCandidate", () => {
 
   it("refuses to finalize a candidate with no legs", async () => {
     const candidate = await createCandidate("Empty", "FanDuel");
-    await expect(finalizeCandidate(candidate.id, await seen(candidate.id))).rejects.toThrow();
+    await expect(finalizeCandidate(candidate.id, await seen(candidate.id))).rejects.toThrow("This slip has no legs.");
   });
 
   it("is unaffected by later edits to the source idea", async () => {

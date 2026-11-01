@@ -1,12 +1,14 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useAppNavigate } from "@/components/appNavigation";
 import { useData } from "@/app/DataProvider";
 import { IdeaCard } from "@/components/IdeaCard";
 import { PageShell } from "@/components/PageShell";
 import { CurrentSlipTray } from "@/components/CurrentSlipTray";
 import { QuickAddForm } from "@/components/QuickAddForm";
+import { StaleAddNote, type StaleAdd } from "@/components/StaleAddNote";
 import { BucketIcon, SearchIcon } from "@/components/icons";
 import { Button, Select, TextInput } from "@/components/FormControls";
 import { CONFIDENCE_LEVELS, type CandidateParlay } from "@/domain/types";
@@ -21,24 +23,45 @@ import { filterIdeas, type IdeaFilter } from "@/domain/ideas/ideaFilter";
  *
  * ADD MODE (/ideas?add=<slipId>, opened from the Slip screen's Add ideas):
  * the same list, with each card adding to that slip and a bar to return to
- * it. The query is read under Suspense so the page itself still prerenders
- * (and is precached) as plain Ideas.
+ * it. If that slip has since been placed or deleted, one line says so and the
+ * query is dropped, rather than the cards quietly adding to whatever slip is
+ * current (B's 3c review, R1).
+ *
+ * Only a tiny reader sits under Suspense (useSearchParams needs one for the
+ * page to prerender): the screen itself, quick-add box included, is
+ * hydrated rather than remounted, so text typed before hydration is kept.
  */
 export default function IdeasPage() {
+  const [addSlipId, setAddSlipId] = useState<string | null>(null);
   return (
-    <Suspense fallback={<IdeasScreen addSlipId={null} />}>
-      <IdeasWithQuery />
-    </Suspense>
+    <>
+      <Suspense fallback={null}>
+        <AddQueryReader onRead={setAddSlipId} />
+      </Suspense>
+      <IdeasScreen addSlipId={addSlipId} />
+    </>
   );
 }
 
-function IdeasWithQuery() {
+function AddQueryReader({ onRead }: { onRead: (addSlipId: string | null) => void }) {
   const addSlipId = useSearchParams().get("add");
-  return <IdeasScreen addSlipId={addSlipId} />;
+  useEffect(() => onRead(addSlipId), [addSlipId, onRead]);
+  return null;
 }
+
+/**
+ * Whether the quick-add box takes focus when the screen opens: from the URL,
+ * not from loaded data, so add mode never focuses it while the slips are
+ * still loading. Read when the box mounts, after the URL has changed.
+ */
+function openedOutsideAddMode(): boolean {
+  return !new URLSearchParams(window.location.search).has("add");
+}
+
 
 function IdeasScreen({ addSlipId }: { addSlipId: string | null }) {
   const { ideas, candidates, finalized, activeCandidate, loading } = useData();
+  const [staleAdd, setStaleAdd] = useState<StaleAdd | null>(null);
   const [filter, setFilter] = useState<IdeaFilter>({
     search: "",
     confidence: "all",
@@ -52,6 +75,17 @@ function IdeasScreen({ addSlipId }: { addSlipId: string | null }) {
   const addSlip = addSlipId ? (candidates.find((c) => c.id === addSlipId && !isPlaced(c)) ?? null) : null;
   const targetSlip = addSlip ?? activeCandidate;
 
+  // A ?add= for a slip that's been placed or deleted: say so once, and drop
+  // the query (history.replaceState: no navigation, no server request).
+  const staleAddFor = !loading && addSlipId && !addSlip ? addSlipId : null;
+  if (staleAddFor && staleAdd?.slipId !== staleAddFor) {
+    const slip = candidates.find((c) => c.id === staleAddFor);
+    setStaleAdd({ slipId: staleAddFor, placedName: slip ? slip.name : null });
+  }
+  useEffect(() => {
+    if (staleAddFor) window.history.replaceState(null, "", "/ideas");
+  }, [staleAddFor]);
+
   const usage = useMemo(() => ideaUsage(candidates, finalized), [candidates, finalized]);
   const activeIdeas = useMemo(() => ideas.filter((idea) => !idea.archivedAt), [ideas]);
   const needsDetailsCount = activeIdeas.filter((idea) => idea.detailsStatus === "needs_details").length;
@@ -62,9 +96,10 @@ function IdeasScreen({ addSlipId }: { addSlipId: string | null }) {
     <PageShell title="IDEAS" icon={<BucketIcon className="h-8 w-8" />}>
       <div className="flex flex-col gap-4">
         {addSlip ? <AddModeBar slip={addSlip} /> : null}
+        {staleAdd && !addSlip && <StaleAddNote stale={staleAdd} current={activeCandidate} />}
 
         <section>
-          <QuickAddForm autoFocus={!addSlip} />
+          <QuickAddForm focusOnOpen={openedOutsideAddMode} />
         </section>
 
         {!addSlip && <CurrentSlipTray />}
@@ -158,7 +193,7 @@ function IdeasScreen({ addSlipId }: { addSlipId: string | null }) {
 
 /** Add mode's bar: which slip the cards add to, and the way back to it. */
 function AddModeBar({ slip }: { slip: CandidateParlay }) {
-  const router = useRouter();
+  const navigate = useAppNavigate();
   const { setActiveCandidateId } = useData();
   const legs = slip.ideaIds.length;
   return (
@@ -175,7 +210,7 @@ function AddModeBar({ slip }: { slip: CandidateParlay }) {
         className="!min-h-[32px] shrink-0 px-3 py-1 text-sm"
         onClick={() => {
           setActiveCandidateId(slip.id);
-          router.push("/slip");
+          navigate("/slip");
         }}
       >
         Done

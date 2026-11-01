@@ -42,6 +42,7 @@ export function IdeaCard({ idea, usage, targetSlip }: { idea: CapturedIdea; usag
   const [addingToOther, setAddingToOther] = useState(false);
   const [otherCandidateId, setOtherCandidateId] = useState("");
   const [addedMessage, setAddedMessage] = useState<string | null>(null);
+  const [addError, setAddError] = useState<string | null>(null);
 
   const targetSlipId = targetSlip?.id ?? null;
   const inTargetSlip = Boolean(targetSlip?.ideaIds.includes(idea.id));
@@ -77,7 +78,12 @@ export function IdeaCard({ idea, usage, targetSlip }: { idea: CapturedIdea; usag
 
   async function handleAddToTargetSlip() {
     if (!targetSlipId) return;
-    await addLegToCandidate(targetSlipId, idea.id);
+    setAddError(null);
+    try {
+      await addLegToCandidate(targetSlipId, idea.id);
+    } catch (err) {
+      setAddError(err instanceof Error ? err.message : "Could not add this idea to the slip.");
+    }
     await refreshCandidates();
   }
 
@@ -168,7 +174,17 @@ export function IdeaCard({ idea, usage, targetSlip }: { idea: CapturedIdea; usag
               setChoosingSlip(false);
               flash(`Added to ${slipName}.`);
             }}
+            onFailed={(message) => {
+              setChoosingSlip(false);
+              setAddError(message);
+            }}
           />
+        )}
+
+        {addError && (
+          <p role="alert" className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>
+            {addError}
+          </p>
         )}
 
         {addedMessage && (

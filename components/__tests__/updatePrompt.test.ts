@@ -80,7 +80,7 @@ describe("update prompt", () => {
     container.emit("controllerchange");
     expect(reload).not.toHaveBeenCalled();
     expect(states).toEqual([{ kind: "updated_elsewhere" }]);
-    expect(updatePromptText(states[0])).toBe("The app was updated in another tab.");
+    expect(updatePromptText(states[0])).toBe("The app was updated in another tab. Reload to keep using it.");
   });
 
   it("stops listening when stopped", () => {

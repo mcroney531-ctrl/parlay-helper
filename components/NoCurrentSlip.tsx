@@ -68,13 +68,21 @@ export function NewSlipForm({
   const [name, setName] = useState("Sunday Core");
   const [sportsbook, setSportsbook] = useState(readLastSportsbook);
   const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!sportsbook.trim() || creating) return;
     setCreating(true);
+    setError(null);
     try {
-      const candidate = await createCandidate(name, sportsbook);
+      let candidate;
+      try {
+        candidate = await createCandidate(name, sportsbook);
+      } catch (err) {
+        setError(err instanceof Error ? `Could not create the slip: ${err.message}` : "Could not create the slip.");
+        return;
+      }
       rememberSportsbook(sportsbook);
       await onCreated(candidate.id, candidate.name);
     } finally {
@@ -108,6 +116,11 @@ export function NewSlipForm({
         <Button type="submit" disabled={!sportsbook.trim() || creating}>
           {creating ? "Creating…" : "Create slip"}
         </Button>
+        {error && (
+          <p role="alert" className="text-left text-xs" style={{ color: "var(--color-danger)" }}>
+            {error}
+          </p>
+        )}
       </form>
     </div>
   );
