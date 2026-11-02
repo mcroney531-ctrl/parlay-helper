@@ -84,7 +84,7 @@ test("switching to a market with no line clears the line, and the old capture pr
   await expect(page.getByText("Price +140 · captured, book not recorded (no live price)")).toBeVisible();
 });
 
-test("Team and Opponent follow the player and the game; a market or line change, and typed values, don't move them", async ({ page }) => {
+test("Team and Opponent are recomputed on a player or game change, over typed values; a market or line change never moves them", async ({ page }) => {
   // Chunk 4b. Sleeper gives a player's team as a code; the sheet stores the full name, as the game's sides are named.
   await page.route("**/api/sleeper?search=*", (route) =>
     route.fulfill({
@@ -131,19 +131,34 @@ test("Team and Opponent follow the player and the game; a market or line change,
   await expect(team).toHaveValue("Pittsburgh Steelers");
   await expect(opponent).toHaveValue("");
 
-  // A Team the user typed sticks through a player change; the Opponent follows it.
-  await team.fill("Seattle Seahawks");
+  // Typed values survive market and line changes...
+  await team.fill("Kansas City Chiefs");
+  await opponent.fill("Somebody Else");
+  await sheet.getByLabel("Market").selectOption({ label: "Receiving Yards" });
+  await sheet.getByLabel("Line at capture").fill("6.5");
+  await expect(team).toHaveValue("Kansas City Chiefs");
+  await expect(opponent).toHaveValue("Somebody Else");
+
+  // ...but a player change recomputes both from the new player.
   await sheet.getByText("Change", { exact: true }).click();
   await pickPlayer("Puka", "Puka Nacua");
-  await expect(team).toHaveValue("Seattle Seahawks");
-  await expect(opponent).toHaveValue("Los Angeles Rams");
-  await sheet.getByLabel("Line at capture").fill("6.5");
-  await expect(team).toHaveValue("Seattle Seahawks");
+  await expect(team).toHaveValue("Los Angeles Rams");
+  await expect(opponent).toHaveValue("Seattle Seahawks");
 
+  // Typed values survive a save.
+  await team.fill("Kansas City Chiefs");
+  await opponent.fill("Somebody Else");
   await sheet.getByRole("button", { name: /^Save/ }).click();
   await expect(sheet).toBeHidden();
   await page.getByRole("button", { name: /Complete details|Edit details/ }).click();
   await sheet.getByText("More details (team, odds, confidence, note)").click();
-  await expect(team).toHaveValue("Seattle Seahawks");
-  await expect(opponent).toHaveValue("Los Angeles Rams");
+  await expect(team).toHaveValue("Kansas City Chiefs");
+  await expect(opponent).toHaveValue("Somebody Else");
+
+  // A game change recomputes the typed Opponent (Kansas City isn't in this game); Team is kept.
+  await sheet.getByRole("button", { name: "Clear game" }).click();
+  await sheet.getByRole("combobox", { name: "Game" }).fill("Rams");
+  await sheet.getByRole("option", { name: /Seattle Seahawks @ Los Angeles Rams/ }).click();
+  await expect(team).toHaveValue("Kansas City Chiefs");
+  await expect(opponent).toHaveValue("");
 });

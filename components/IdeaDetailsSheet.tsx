@@ -3,13 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CaptureProposition, CapturedIdea, Confidence } from "@/domain/types";
 import { captureIsEligible, stampedCaptureProposition } from "@/domain/ideas/captureProposition";
-import {
-  type GameTeams,
-  type TeamFieldValues,
-  manualFromValues,
-  teamFieldsAfterGameChange,
-  teamFieldsAfterPlayerChange,
-} from "@/domain/ideas/teamFields";
+import { type GameTeams, type TeamFieldValues, teamFieldsAfterGameChange, teamFieldsAfterPlayerChange } from "@/domain/ideas/teamFields";
 import { CONFIDENCE_LEVELS } from "@/domain/types";
 import { SUPPORTED_LEAGUES, sportForLeague } from "@/integrations/odds-api/sportKeys";
 import { CUSTOM_MARKET_VALUE, MARKET_OPTIONS, marketLabelForKey } from "@/integrations/odds-api/marketKeys";
@@ -81,9 +75,8 @@ export function IdeaDetailsSheet({
     () => values.marketKey !== "" && !MARKET_OPTIONS.some((m) => m.key === values.marketKey),
   );
   const sheetRef = useRef<HTMLDivElement>(null);
-  // Team / Opponent (chunk 4b, see teamFields.ts): which ones the user typed,
-  // and the selected game's sides, for recomputing on a player or game change.
-  const [teamManual, setTeamManual] = useState(() => manualFromValues(values));
+  // Team / Opponent (chunk 4b, see teamFields.ts): the selected game's sides,
+  // for recomputing on a player or game change.
   const [gameTeams, setGameTeams] = useState<GameTeams | null>(null);
   const handleSelectedTeams = useCallback((teams: GameTeams | null) => setGameTeams(teams), []);
 
@@ -201,7 +194,7 @@ export function IdeaDetailsSheet({
               onChange={(id, meta) => {
                 set("eventId", id);
                 setGameTeams(meta ?? null);
-                setTeamFields(teamFieldsAfterGameChange(values, teamManual, meta ?? null));
+                setTeamFields(teamFieldsAfterGameChange(values, meta ?? null));
               }}
               onSelectedTeams={handleSelectedTeams}
             />
@@ -214,7 +207,7 @@ export function IdeaDetailsSheet({
               onChange={(name, id, team) => {
                 set("playerName", name);
                 set("playerId", id);
-                setTeamFields(teamFieldsAfterPlayerChange(values, teamManual, id ? team : null, gameTeams));
+                setTeamFields(teamFieldsAfterPlayerChange(id ? team : null, gameTeams));
               }}
             />
           </Field>
@@ -263,22 +256,10 @@ export function IdeaDetailsSheet({
             </summary>
             <div className="flex flex-col gap-4 border-t px-3 py-4" style={{ borderColor: "var(--color-border)" }}>
               <Field label="Team">
-                <TextInput
-                  value={values.team}
-                  onChange={(e) => {
-                    set("team", e.target.value);
-                    setTeamManual((prev) => ({ ...prev, team: e.target.value.trim() !== "" }));
-                  }}
-                />
+                <TextInput value={values.team} onChange={(e) => set("team", e.target.value)} />
               </Field>
               <Field label="Opponent">
-                <TextInput
-                  value={values.opponent}
-                  onChange={(e) => {
-                    set("opponent", e.target.value);
-                    setTeamManual((prev) => ({ ...prev, opponent: e.target.value.trim() !== "" }));
-                  }}
-                />
+                <TextInput value={values.opponent} onChange={(e) => set("opponent", e.target.value)} />
               </Field>
               <Field label="Slate / date">
                 <TextInput type="date" value={values.slateDate} onChange={(e) => set("slateDate", e.target.value)} />

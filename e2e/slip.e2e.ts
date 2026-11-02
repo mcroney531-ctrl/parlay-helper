@@ -169,7 +169,7 @@ test("Start a new slip makes the new slip current, even with another draft and n
   await expect(slipTab(page, "Sunday Core")).toHaveAttribute("aria-selected", "false");
 });
 
-test("picking a game never guesses the player's team; it fills the opponent when the team names a side, never over a typed one", async ({ page }) => {
+test("picking a game never guesses the player's team; it recomputes the opponent, and a typed opponent lasts until then", async ({ page }) => {
   await page.route("**/api/events?league=NFL", (route) =>
     route.fulfill({
       json: {
@@ -213,21 +213,23 @@ test("picking a game never guesses the player's team; it fills the opponent when
   await pickGame();
   await expect(opponent).toHaveValue("Los Angeles Rams");
 
-  // An opponent the user typed is kept, through clearing and picking the game.
+  // An opponent the user typed survives a market change, but a game change recomputes it (chunk 4b).
   await opponent.fill("Somebody Else");
+  await sheet.getByLabel("Market").selectOption({ label: "Receptions" });
+  await expect(opponent).toHaveValue("Somebody Else");
   await sheet.getByRole("button", { name: "Clear game" }).click();
-  await expect(opponent).toHaveValue("Somebody Else");
+  await expect(opponent).toHaveValue("");
   await pickGame();
-  await expect(opponent).toHaveValue("Somebody Else");
+  await expect(opponent).toHaveValue("Los Angeles Rams");
 
-  // Saved as shown.
-  await opponent.fill("Los Angeles Rams");
+  // Saved as shown, a typed opponent included.
+  await opponent.fill("Somebody Else");
   await sheet.getByRole("button", { name: "Save details" }).click();
   await expect(sheet).toBeHidden();
   await page.getByRole("button", { name: "Complete details" }).click();
   await page.getByText("More details (team, odds, confidence, note)").click();
   await expect(page.getByLabel("Team", { exact: true })).toHaveValue("Seattle Seahawks");
-  await expect(page.getByLabel("Opponent", { exact: true })).toHaveValue("Los Angeles Rams");
+  await expect(page.getByLabel("Opponent", { exact: true })).toHaveValue("Somebody Else");
 });
 
 test("the old screen names redirect permanently to the new ones, with the query kept", async ({ page }) => {
