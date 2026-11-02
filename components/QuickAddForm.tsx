@@ -17,7 +17,10 @@ export function QuickAddForm({ focusOnOpen = () => true }: { focusOnOpen?: () =>
   // Empty on the first render, as in the prerendered HTML this form now
   // hydrates; the saved draft is loaded once mounted (below).
   const [text, setText] = useState("");
-  const draftLoaded = useRef(false);
+  // State, not a ref: a StrictMode replay of the save effect runs with the
+  // first render's values, where this is still false, so it can't remove the
+  // draft before the load's text is committed (H1, B's review of e004b24).
+  const [draftLoaded, setDraftLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -25,16 +28,16 @@ export function QuickAddForm({ focusOnOpen = () => true }: { focusOnOpen?: () =>
   const focusOnOpenRef = useRef(focusOnOpen);
 
   useEffect(() => {
-    // Declared before the load below, so on mount it runs first and is skipped:
-    // the first, empty render would otherwise delete the saved draft.
-    if (!draftLoaded.current) return;
+    // Nothing is saved until the load below has committed its text: the
+    // first, empty render would otherwise delete the saved draft.
+    if (!draftLoaded) return;
     try {
       if (text) window.localStorage.setItem(DRAFT_KEY, text);
       else window.localStorage.removeItem(DRAFT_KEY);
     } catch {
       // see the draft load below
     }
-  }, [text]);
+  }, [text, draftLoaded]);
 
   useEffect(() => {
     // Text typed into the prerendered box before hydration wins over the
@@ -47,8 +50,8 @@ export function QuickAddForm({ focusOnOpen = () => true }: { focusOnOpen?: () =>
       // localStorage may be unavailable (private mode); draft preservation
       // is a convenience, not a requirement.
     }
-    draftLoaded.current = true;
     if (typed || saved) setText(typed || saved);
+    setDraftLoaded(true);
     if (focusOnOpenRef.current()) inputRef.current?.focus();
   }, []);
 

@@ -98,6 +98,80 @@ test("after another tab applies the update, this tab says so and its next naviga
   }
 });
 
+/** Records app-router RSC fetches (client-side navigations) made by a tab. */
+function watchRsc(tab: Page) {
+  const seen: string[] = [];
+  tab.on("request", (r) => {
+    if (r.headers()["rsc"] === "1" || r.url().includes("_rsc=")) seen.push(r.url());
+  });
+  return seen;
+}
+
+test("in full-page-load mode, Back loads a new document, within the tab's history and across a full load", async ({ page, context }) => {
+  await seedV2(page, {
+    ideas: [idea("i1", "Puka Nacua")],
+    slips: [{ id: "s1", name: "Sunday Core", sportsbook: "FanDuel", ideaIds: ["i1"], updatedAt: EARLIER }],
+  });
+  await openControlled(page);
+  const [v1] = await cacheNames(page);
+  const nav = (tab: Page) => tab.getByRole("navigation", { name: "Primary" });
+
+  // "within": an old tab that moved /ideas -> /slip client-side BEFORE the update.
+  const within = await context.newPage();
+  await within.goto("/ideas");
+  await within.waitForFunction(() => navigator.serviceWorker.controller !== null);
+  await markDocument(within);
+  await nav(within).getByRole("link", { name: "Slip" }).click();
+  await expect(within).toHaveURL(/\/slip$/);
+  expect(await sameDocument(within)).toBe(true); // a client-side navigation, as intended outside the mode
+
+  // "across": an old tab that will leave by a full load in the mode, then come Back.
+  const across = await context.newPage();
+  await across.goto("/slip");
+  await across.waitForFunction(() => navigator.serviceWorker.controller !== null);
+  // Notes whether the browser restored this document from the back/forward cache.
+  await across.evaluate(() =>
+    window.addEventListener("pageshow", (e) => {
+      if (e.persisted) sessionStorage.setItem("restoredFromBfcache", "yes");
+    }),
+  );
+
+  const original = readFileSync(SW_PATH, "utf8");
+  writeFileSync(SW_PATH, original.replace(v1, `${v1}-next`));
+  try {
+    await page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => r?.update()));
+    for (const tab of [page, within, across]) await expect(tab.getByText("Update available.")).toBeVisible();
+    await page.getByRole("button", { name: "Reload" }).click();
+    for (const tab of [within, across]) {
+      await expect(tab.getByText("The app was updated in another tab. Reload to keep using it.")).toBeVisible();
+      await markDocument(tab);
+    }
+
+    // Back within the tab's own history: a new document, and no client-side (RSC) traversal at all.
+    const rsc = watchRsc(within);
+    await within.goBack();
+    await expect(within).toHaveURL(/\/ideas$/);
+    await expect(nav(within).getByRole("link", { name: "Ideas" })).toHaveAttribute("aria-current", "page");
+    expect(await sameDocument(within)).toBe(false);
+    expect(rsc).toEqual([]);
+
+    // Back across a full load: never the old document again, from the back/forward cache or otherwise.
+    await nav(across).getByRole("link", { name: "History" }).click();
+    await expect(across).toHaveURL(/\/history$/);
+    await across.goBack();
+    await expect(across).toHaveURL(/\/slip$/);
+    await expect(nav(across).getByRole("link", { name: "Slip" })).toHaveAttribute("aria-current", "page");
+    expect(await sameDocument(across)).toBe(false);
+    await expect(across.getByText("The app was updated in another tab.")).toHaveCount(0);
+    test.info().annotations.push({
+      type: "bfcache",
+      description: (await across.evaluate(() => sessionStorage.getItem("restoredFromBfcache"))) ?? "not restored from bfcache",
+    });
+  } finally {
+    writeFileSync(SW_PATH, original);
+  }
+});
+
 test("offline, an old screen name opens its new screen with the query kept", async ({ page, context }) => {
   await openControlled(page);
   await context.setOffline(true);
@@ -109,4 +183,23 @@ test("offline, an old screen name opens its new screen with the query kept", asy
   await page.goto("/builder?from=old");
   await expect(page).toHaveURL(/\/slip\?from=old$/);
   await expect(page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Slip" })).toHaveAttribute("aria-current", "page");
+});
+
+test("offline, an unknown path opens the Ideas screen, and it works", async ({ page, context }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await openControlled(page);
+  await context.setOffline(true);
+
+  await page.goto("/whatever?x=1");
+  await expect(page).toHaveURL(/\/whatever\?x=1$/); // served in place, not redirected
+  await expect(page.getByRole("heading", { name: "IDEAS" })).toBeVisible();
+  await expect(page.getByText("No ideas yet.")).toBeVisible(); // hydrated: the list loaded from storage
+
+  // Working, not just painted: saving an idea goes through the app's own code and storage.
+  await page.getByLabel("Save the thought before it disappears.").fill("Offline idea");
+  await page.getByRole("button", { name: "Save idea" }).click();
+  await expect(page.getByText("Saved to Ideas.")).toBeVisible();
+  await expect(page.getByRole("listitem").filter({ hasText: "Offline idea" })).toBeVisible();
+  expect(errors).toEqual([]);
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { interceptLinkClicks } from "@/components/appNavigation";
+import { interceptLinkClicks, watchHistoryTraversal } from "@/components/appNavigation";
 
 // Full-page-load mode (B's 3c review, item 2b): after another tab applied an
 // update, a plain click on an in-app link becomes a full page load.
@@ -85,5 +85,57 @@ describe("interceptLinkClicks", () => {
     const stop = interceptLinkClicks(doc as never, vi.fn());
     stop();
     expect(doc.listening()).toBe(false);
+  });
+});
+
+describe("watchHistoryTraversal (Back/Forward in full-page-load mode)", () => {
+  function fakeWindow() {
+    const fns = new Map<string, ((e: Event) => void)[]>();
+    return {
+      addEventListener: (type: string, fn: (e: Event) => void) => fns.set(type, [...(fns.get(type) ?? []), fn]),
+      fire: (type: string, e: object) => {
+        for (const fn of fns.get(type) ?? []) {
+          if ((e as { stopped?: boolean }).stopped) break;
+          fn(e as Event);
+        }
+      },
+    };
+  }
+  const popstate = () => {
+    const e = { stopped: false, stopImmediatePropagation: () => (e.stopped = true) };
+    return e;
+  };
+
+  it("in the mode, reloads on Back/Forward and stops the app router's own traversal", () => {
+    const win = fakeWindow();
+    const reload = vi.fn();
+    watchHistoryTraversal(win as never, reload, () => true);
+    const router = vi.fn();
+    win.addEventListener("popstate", router); // registered later, as the app router's effect is
+    win.fire("popstate", popstate());
+    expect(reload).toHaveBeenCalledOnce();
+    expect(router).not.toHaveBeenCalled();
+  });
+
+  it("in the mode, reloads a page restored from the back/forward cache, not a fresh one", () => {
+    const win = fakeWindow();
+    const reload = vi.fn();
+    watchHistoryTraversal(win as never, reload, () => true);
+    win.fire("pageshow", { persisted: false });
+    expect(reload).not.toHaveBeenCalled();
+    win.fire("pageshow", { persisted: true });
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
+  it("outside the mode, leaves Back/Forward to the app router", () => {
+    const win = fakeWindow();
+    const reload = vi.fn();
+    watchHistoryTraversal(win as never, reload, () => false);
+    const router = vi.fn();
+    win.addEventListener("popstate", router);
+    win.fire("popstate", popstate());
+    win.fire("pageshow", { persisted: true });
+    expect(reload).not.toHaveBeenCalled();
+    expect(router).toHaveBeenCalledOnce();
   });
 });
