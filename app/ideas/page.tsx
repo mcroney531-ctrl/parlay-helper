@@ -1,5 +1,6 @@
 "use client";
 
+import { usePageBuildStamp } from "@/components/pageBuildStamp";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAppNavigate } from "@/components/appNavigation";
@@ -32,6 +33,7 @@ import { filterIdeas, type IdeaFilter } from "@/domain/ideas/ideaFilter";
  * hydrated rather than remounted, so text typed before hydration is kept.
  */
 export default function IdeasPage() {
+  usePageBuildStamp(process.env.NEXT_PUBLIC_APP_BUILD);
   const [addSlipId, setAddSlipId] = useState<string | null>(null);
   return (
     <>

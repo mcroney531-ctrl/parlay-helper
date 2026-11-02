@@ -1,5 +1,6 @@
 "use client";
 
+import { usePageBuildStamp } from "@/components/pageBuildStamp";
 import { useState } from "react";
 import { useAppNavigate } from "@/components/appNavigation";
 import { useData } from "@/app/DataProvider";
@@ -25,6 +26,7 @@ import { describeRefreshNotice, describeRefreshProblem, refreshCandidateContext 
 import { liveContextKey } from "@/storage/indexeddb/repositories/liveContextRepository";
 
 export default function BuilderPage() {
+  usePageBuildStamp(process.env.NEXT_PUBLIC_APP_BUILD);
   const {
     candidates,
     ideas,

@@ -107,6 +107,49 @@ function watchRsc(tab: Page) {
   return seen;
 }
 
+/**
+ * Records, per document, which popstate listeners register and in what order,
+ * and in sessionStorage (which survives the reload) which ones RUN. Each is
+ * named by its own source: ours is the one that calls
+ * stopImmediatePropagation; the app router's onPopState reads history
+ * state's __NA marker (both survive minification). B's probe, review of 9a333b2.
+ */
+async function recordPopstateListeners(tab: Page) {
+  await tab.addInitScript(() => {
+    const kindOf = (fn: unknown) => {
+      const source = String(fn);
+      if (source.includes("stopImmediatePropagation")) return "ours";
+      if (source.includes("__NA")) return "next";
+      return "other";
+    };
+    const w = window as unknown as { popstateRegistered: string[] };
+    w.popstateRegistered = [];
+    const add = window.addEventListener.bind(window);
+    window.addEventListener = ((type: string, listener: EventListener, options?: boolean | AddEventListenerOptions) => {
+      if (type !== "popstate" || typeof listener !== "function") return add(type, listener, options);
+      const kind = kindOf(listener);
+      w.popstateRegistered.push(kind);
+      return add(
+        type,
+        function (this: unknown, event: Event) {
+          const runs = JSON.parse(sessionStorage.getItem("popstateRuns") ?? "[]");
+          sessionStorage.setItem("popstateRuns", JSON.stringify([...runs, kind]));
+          return listener.call(this, event);
+        },
+        options,
+      );
+    }) as typeof window.addEventListener;
+  });
+}
+const popstateRegistered = (tab: Page) =>
+  tab.evaluate(() => (window as unknown as { popstateRegistered: string[] }).popstateRegistered.filter((k) => k !== "other"));
+const takePopstateRuns = (tab: Page) =>
+  tab.evaluate(() => {
+    const runs: string[] = JSON.parse(sessionStorage.getItem("popstateRuns") ?? "[]");
+    sessionStorage.removeItem("popstateRuns");
+    return runs.filter((k) => k !== "other");
+  });
+
 test("in full-page-load mode, Back loads a new document, within the tab's history and across a full load", async ({ page, context }) => {
   await seedV2(page, {
     ideas: [idea("i1", "Puka Nacua")],
@@ -118,12 +161,25 @@ test("in full-page-load mode, Back loads a new document, within the tab's histor
 
   // "within": an old tab that moved /ideas -> /slip client-side BEFORE the update.
   const within = await context.newPage();
+  await recordPopstateListeners(within);
   await within.goto("/ideas");
   await within.waitForFunction(() => navigator.serviceWorker.controller !== null);
+  // Ours is registered first, so that in the mode it can stop the router's.
+  await expect.poll(() => popstateRegistered(within)).toEqual(["ours", "next"]);
   await markDocument(within);
   await nav(within).getByRole("link", { name: "Slip" }).click();
   await expect(within).toHaveURL(/\/slip$/);
   expect(await sameDocument(within)).toBe(true); // a client-side navigation, as intended outside the mode
+
+  // Outside the mode both listeners run (ours does nothing) and Back stays client-side.
+  await takePopstateRuns(within);
+  await within.goBack();
+  await expect(within).toHaveURL(/\/ideas$/);
+  expect(await takePopstateRuns(within)).toEqual(["ours", "next"]);
+  await within.goForward();
+  await expect(within).toHaveURL(/\/slip$/);
+  expect(await takePopstateRuns(within)).toEqual(["ours", "next"]);
+  expect(await sameDocument(within)).toBe(true);
 
   // "across": an old tab that will leave by a full load in the mode, then come Back.
   const across = await context.newPage();
@@ -147,13 +203,15 @@ test("in full-page-load mode, Back loads a new document, within the tab's histor
       await markDocument(tab);
     }
 
-    // Back within the tab's own history: a new document, and no client-side (RSC) traversal at all.
+    // Back within the tab's own history: ONLY ours runs (the router never starts a
+    // traversal), a new document loads, and no client-side (RSC) request is made.
     const rsc = watchRsc(within);
     await within.goBack();
     await expect(within).toHaveURL(/\/ideas$/);
     await expect(nav(within).getByRole("link", { name: "Ideas" })).toHaveAttribute("aria-current", "page");
     expect(await sameDocument(within)).toBe(false);
     expect(rsc).toEqual([]);
+    expect(await takePopstateRuns(within)).toEqual(["ours"]);
 
     // Back across a full load: never the old document again, from the back/forward cache or otherwise.
     await nav(across).getByRole("link", { name: "History" }).click();

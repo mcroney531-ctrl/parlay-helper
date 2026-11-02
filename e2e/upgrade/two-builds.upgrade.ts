@@ -61,18 +61,27 @@ const buildOf = (page: Page) => page.evaluate(() => document.documentElement.dat
 const cacheNames = (page: Page) => page.evaluate(() => caches.keys());
 const hasWaiting = (page: Page) => page.evaluate(() => navigator.serviceWorker.getRegistration().then((r) => Boolean(r?.waiting)));
 
-/** Same-origin script and stylesheet URLs the current document loaded. */
+const pageBuildOf = (page: Page) => page.evaluate(() => document.documentElement.dataset.pageBuild ?? null);
+
+/**
+ * Every /_next/static file the current document fetched, however it was
+ * requested: tags in the HTML and chunks loaded later at runtime alike.
+ */
 const documentAssets = (page: Page) =>
   page.evaluate(() =>
-    [...document.querySelectorAll<HTMLScriptElement | HTMLLinkElement>("script[src], link[rel=stylesheet]")]
-      .map((el) => new URL(el instanceof HTMLScriptElement ? el.src : el.href))
-      .filter((url) => url.origin === location.origin)
+    performance
+      .getEntriesByType("resource")
+      .map((entry) => new URL(entry.name))
+      .filter((url) => url.origin === location.origin && url.pathname.startsWith("/_next/static/"))
       .map((url) => url.pathname + url.search),
   );
 
 test("from build A to build B: B waits, A's tab still loads A's files offline, and B takes over once every A tab closes", async ({ context }) => {
   const [assetsA, assetsB] = [manifest("a"), manifest("b")];
-  expect(assetsA.filter((url) => !assetsB.includes(url)).length).toBeGreaterThan(0); // the builds really differ
+  // The builds really differ: every screen's own chunk carries its build label.
+  const onlyInA = assetsA.filter((url) => url.startsWith("/_next/static/") && !assetsB.includes(url));
+  test.info().annotations.push({ type: "assets", description: `${onlyInA.length} of ${assetsA.filter((u) => u.startsWith("/_next/static/")).length} static files differ between A and B` });
+  expect(onlyInA.length).toBeGreaterThanOrEqual(4); // the layout's chunk and the three screens'
 
   // 1. Build A is live; a tab is controlled by A's worker.
   await startBuild("a");
@@ -101,9 +110,11 @@ test("from build A to build B: B waits, A's tab still loads A's files offline, a
   for (const screen of ["/ideas", "/slip", "/history"]) {
     await old.goto(screen);
     await expect.poll(() => buildOf(old), { message: `${screen} hydrated as build A` }).toBe("upgrade-a");
+    await expect.poll(() => pageBuildOf(old), { message: `${screen} ran build A's own screen code` }).toBe("upgrade-a");
     const assets = await documentAssets(old);
     expect(assets.length).toBeGreaterThan(0);
     expect(assets.filter((url) => !assetsA.includes(url)), `${screen} loaded only build A's files`).toEqual([]);
+    expect(assets.filter((url) => onlyInA.includes(url)).length, `${screen} loaded some of A's own files`).toBeGreaterThan(0);
   }
   expect(failedStatic).toEqual([]);
   expect(await hasWaiting(old)).toBe(true); // still waiting: an offline reload is not a takeover
@@ -125,6 +136,7 @@ test("from build A to build B: B waits, A's tab still loads A's files offline, a
   await context.setOffline(true);
   await fresh.goto("/slip");
   await expect.poll(() => buildOf(fresh)).toBe("upgrade-b");
+  await expect.poll(() => pageBuildOf(fresh)).toBe("upgrade-b");
   expect((await documentAssets(fresh)).filter((url) => !assetsB.includes(url))).toEqual([]);
   await context.setOffline(false);
 });

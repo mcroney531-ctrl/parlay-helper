@@ -1,5 +1,6 @@
 "use client";
 
+import { usePageBuildStamp } from "@/components/pageBuildStamp";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useData } from "@/app/DataProvider";
@@ -139,6 +140,7 @@ function FinalizedCard({
 }
 
 export default function HistoryPage() {
+  usePageBuildStamp(process.env.NEXT_PUBLIC_APP_BUILD);
   const { finalized, candidates, loading } = useData();
   const [search, setSearch] = useState("");
   const [sportsbookFilter, setSportsbookFilter] = useState("all");

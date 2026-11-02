@@ -20,6 +20,10 @@ Open http://localhost:3000 — it redirects to `/ideas`. The old paths `/capture
 - `npm run test` — run the Vitest suite once
 - `npm run test:watch` — Vitest in watch mode
 - `npm run lint` — ESLint
+- `npm run test:e2e` — the Playwright browser checks against a fresh production build (see **Testing** below)
+- `npm run test:e2e:upgrade` — the two-build upgrade check: builds the app twice (build labels `upgrade-a` and `upgrade-b`, into `.e2e-upgrade/`), serves A and then B on one origin (port 3150), and checks that B's service worker waits while an A tab is open, that the A tab still loads A's own files on every screen offline, and that B takes over, with A's cache deleted, once every A tab has closed. It puts `tsconfig.json` (from git), `next-env.d.ts` and the generated `public/sw.js`/`precache-manifest.json` back afterwards, on Ctrl-C too, and repairs them at the start of the next run if a run was killed outright.
+
+  **Required (Trevor's rule):** run `npm run test:e2e:upgrade` and see it pass before every merge into `claude/phase3` and into `main`, and before any merge that touches `scripts/sw-template.js`, `config/routes.json` or `next.config.ts`.
 
 ## Environment variables
 
