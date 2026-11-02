@@ -14,6 +14,25 @@ const rows: [input: string, expected: { playerName: string | null; team: string 
   ["Kansas City -3", { playerName: null, team: "Kansas City Chiefs", note: null }],
   ["New York Giants +3", { playerName: null, team: "New York Giants", note: null }],
   ["San Francisco 49ers ML", { playerName: null, team: "San Francisco 49ers", note: null }],
+  // A two-word city always means the team (Trevor's review of 1c3c2e0).
+  ["Tampa Bay Bucs +3", { playerName: null, team: "Tampa Bay Buccaneers", note: null }],
+  ["Tampa Bay Bucks +3", { playerName: null, team: "Tampa Bay Buccaneers", note: null }],
+  ["Green Bay -3", { playerName: null, team: "Green Bay Packers", note: null }],
+  // Short names.
+  ["Niners -6", { playerName: null, team: "San Francisco 49ers", note: null }],
+  ["Bucs ML", { playerName: null, team: "Tampa Bay Buccaneers", note: null }],
+  ["Pats +3", { playerName: null, team: "New England Patriots", note: null }],
+  ["Jags +7", { playerName: null, team: "Jacksonville Jaguars", note: null }],
+  ["Fins -2.5", { playerName: null, team: "Miami Dolphins", note: null }],
+  // Codes, in capitals only; a code followed by a name is a player.
+  ["KC -3", { playerName: null, team: "Kansas City Chiefs", note: null }],
+  ["SF -6", { playerName: null, team: "San Francisco 49ers", note: null }],
+  ["NYJ +7 - fade", { playerName: null, team: "New York Jets", note: "fade" }],
+  ["KC Chiefs ML", { playerName: null, team: "Kansas City Chiefs", note: null }],
+  ["kc -3", { playerName: null, team: null, note: null }],
+  ["KC Concepcion over 40.5", { playerName: "KC Concepcion", team: null, note: null }],
+  ["No TD Puka", { playerName: null, team: null, note: null }],
+  ["Yes Puka anytime", { playerName: null, team: null, note: null }],
   // A city two teams share: the next word decides, otherwise no team (and no player).
   ["NY Jets +7", { playerName: null, team: "New York Jets", note: null }],
   ["Los Angeles ML", { playerName: null, team: null, note: null }],

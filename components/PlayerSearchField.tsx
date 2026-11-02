@@ -8,6 +8,9 @@ import { CheckCircleIcon } from "@/components/icons";
 
 type PlayerResult = { playerId: string; fullName: string; team: string | null; position: string | null };
 
+/** How the player changed: picked from the list, cleared ("Change"), or its text edited. */
+export type PlayerChange = "picked" | "cleared" | "typed";
+
 export function PlayerSearchField({
   playerName,
   playerId,
@@ -15,7 +18,7 @@ export function PlayerSearchField({
 }: {
   playerName: string;
   playerId: string;
-  onChange: (playerName: string, playerId: string, team?: string | null) => void;
+  onChange: (playerName: string, playerId: string, team: string | null, how: PlayerChange) => void;
 }) {
   const [query, setQuery] = useState(playerName);
   const [results, setResults] = useState<PlayerResult[]>([]);
@@ -61,7 +64,7 @@ export function PlayerSearchField({
     setResolvedTeam(null);
     // Free-typing after a selection invalidates that selection — never
     // keep a resolved id attached to a name the user has since changed.
-    onChange(value, "");
+    onChange(value, "", null, "typed");
   }
 
   function handleSelect(result: PlayerResult) {
@@ -70,11 +73,11 @@ export function PlayerSearchField({
     setResults([]);
     setOpen(false);
     setActiveIndex(-1);
-    onChange(result.fullName, result.playerId, result.team);
+    onChange(result.fullName, result.playerId, result.team, "picked");
   }
 
   function handleChangePlayer() {
-    onChange("", "");
+    onChange("", "", null, "cleared");
     setQuery("");
     setResolvedTeam(null);
     window.setTimeout(() => inputRef.current?.focus(), 0);

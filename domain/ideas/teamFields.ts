@@ -26,12 +26,19 @@ export function opponentFor(team: string, game: GameTeams | null): string | null
   return null;
 }
 
+/** Team for a picked player's Sleeper team code; blank for a cleared player or a code the table doesn't know. */
+export function teamForPlayer(playerTeamCode: string | null | undefined): string {
+  return nflTeamByCode(playerTeamCode)?.name ?? "";
+}
+
 /**
- * After the player changes. `playerTeamCode` is the picked Sleeper player's
- * team; a player typed in (not picked) has none, so Team is blank.
+ * After the player changes: picked from the list, or cleared (Trevor's review
+ * of 1c3c2e0). Editing the text of a player's name (fixing a typo) isn't a
+ * player change and recomputes nothing. `playerTeamCode` is the picked
+ * Sleeper player's team; a cleared player has none, so Team is blank.
  */
 export function teamFieldsAfterPlayerChange(playerTeamCode: string | null | undefined, game: GameTeams | null): TeamFieldValues {
-  const team = nflTeamByCode(playerTeamCode)?.name ?? "";
+  const team = teamForPlayer(playerTeamCode);
   return { team, opponent: opponentFor(team, game) ?? "" };
 }
 

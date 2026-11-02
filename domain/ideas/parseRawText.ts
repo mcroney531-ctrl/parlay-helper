@@ -11,8 +11,8 @@ export type ParsedIdeaHints = {
   note: string | null;
 };
 
-/** Over/Under (and O/U) are never a player, or part of one. */
-const NOT_A_NAME = new Set(["over", "under", "o", "u"]);
+/** Over/Under (and O/U), and the Yes/No selections, are never a player, or part of one. */
+const NOT_A_NAME = new Set(["over", "under", "o", "u", "yes", "no"]);
 
 /** A capitalized word; a hyphen inside it ("Amon-Ra", "Smith-Njigba") keeps it one word. */
 const NAME_WORD = /^[A-Z][a-zA-Z'.]*(?:-[A-Za-z][a-zA-Z'.]*)*/;

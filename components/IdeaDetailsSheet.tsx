@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CaptureProposition, CapturedIdea, Confidence } from "@/domain/types";
 import { captureIsEligible, stampedCaptureProposition } from "@/domain/ideas/captureProposition";
-import { type GameTeams, type TeamFieldValues, teamFieldsAfterGameChange, teamFieldsAfterPlayerChange } from "@/domain/ideas/teamFields";
+import { type GameTeams, type TeamFieldValues, teamFieldsAfterGameChange, teamFieldsAfterPlayerChange, teamForPlayer } from "@/domain/ideas/teamFields";
 import { CONFIDENCE_LEVELS } from "@/domain/types";
 import { SUPPORTED_LEAGUES, sportForLeague } from "@/integrations/odds-api/sportKeys";
 import { CUSTOM_MARKET_VALUE, MARKET_OPTIONS, marketLabelForKey } from "@/integrations/odds-api/marketKeys";
@@ -77,8 +77,18 @@ export function IdeaDetailsSheet({
   const sheetRef = useRef<HTMLDivElement>(null);
   // Team / Opponent (chunk 4b, see teamFields.ts): the selected game's sides,
   // for recomputing on a player or game change.
-  const [gameTeams, setGameTeams] = useState<GameTeams | null>(null);
-  const handleSelectedTeams = useCallback((teams: GameTeams | null) => setGameTeams(teams), []);
+  // undefined: a game is selected but its sides aren't known yet (the list is loading).
+  const [gameTeams, setGameTeams] = useState<GameTeams | null | undefined>(() => (values.eventId ? undefined : null));
+  // A player picked before the sides were known: Opponent is recomputed when they arrive (B's review of 1c3c2e0, C1).
+  const opponentPending = useRef(false);
+  const handleSelectedTeams = useCallback((teams: GameTeams | null) => {
+    setGameTeams(teams);
+    // Only that pending recompute runs on arrival; the sheet opening recomputes nothing.
+    if (opponentPending.current) {
+      opponentPending.current = false;
+      setValues((prev) => ({ ...prev, ...teamFieldsAfterGameChange(prev, teams) }));
+    }
+  }, []);
 
   useEffect(() => {
     sheetRef.current?.focus();
@@ -194,6 +204,7 @@ export function IdeaDetailsSheet({
               onChange={(id, meta) => {
                 set("eventId", id);
                 setGameTeams(meta ?? null);
+                opponentPending.current = false;
                 setTeamFields(teamFieldsAfterGameChange(values, meta ?? null));
               }}
               onSelectedTeams={handleSelectedTeams}
@@ -204,10 +215,18 @@ export function IdeaDetailsSheet({
             <PlayerSearchField
               playerName={values.playerName}
               playerId={values.playerId}
-              onChange={(name, id, team) => {
+              onChange={(name, id, team, how) => {
                 set("playerName", name);
                 set("playerId", id);
-                setTeamFields(teamFieldsAfterPlayerChange(id ? team : null, gameTeams));
+                if (how === "typed") return; // a typo fix isn't a new player
+                const code = how === "picked" ? team : null;
+                if (gameTeams === undefined) {
+                  set("team", teamForPlayer(code));
+                  opponentPending.current = true;
+                } else {
+                  opponentPending.current = false;
+                  setTeamFields(teamFieldsAfterPlayerChange(code, gameTeams));
+                }
               }}
             />
           </Field>

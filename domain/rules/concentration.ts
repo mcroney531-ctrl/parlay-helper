@@ -5,8 +5,21 @@ export type ConcentrationLeg = {
   ideaId: string;
   eventId: string | null;
   team: string | null;
+  /** The leg's league, if set: only an NFL (or league-less) team goes through the NFL team table. */
+  league?: string | null;
   kickoffWindow: string | null;
 };
+
+/**
+ * One key per team however it's stored: an NFL team as Sleeper's code (older
+ * ideas) or the full name (chunk 4b). Other leagues' teams group by the raw
+ * value, as before 4b, so NHL "Jets" never joins the NFL Jets.
+ */
+function teamKey(leg: ConcentrationLeg): string | null {
+  if (!leg.team) return null;
+  const nfl = !leg.league || leg.league.toUpperCase() === "NFL";
+  return (nfl ? resolveNflTeam(leg.team)?.name : undefined) ?? leg.team;
+}
 
 export type ConcentrationDimension = "event" | "team" | "kickoff_window";
 
@@ -49,8 +62,7 @@ export function detectConcentrationSignals(legs: ConcentrationLeg[]): Concentrat
 
   const dimensions: [ConcentrationDimension, (leg: ConcentrationLeg) => string | null][] = [
     ["event", (leg) => leg.eventId],
-    // One key per team however it's stored: Sleeper's code (older ideas) or the full name (chunk 4b).
-    ["team", (leg) => (leg.team ? (resolveNflTeam(leg.team)?.name ?? leg.team) : null)],
+    ["team", teamKey],
     ["kickoff_window", (leg) => leg.kickoffWindow],
   ];
 

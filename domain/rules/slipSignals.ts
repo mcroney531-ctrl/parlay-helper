@@ -45,6 +45,7 @@ export function detectSlipSignals(
         ideaId: idea.id,
         eventId: idea.eventId,
         team: idea.team,
+        league: idea.league,
         kickoffWindow: kickoffWindowFor(scheduledStartFor(idea.id)),
       })),
     ),

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { opponentFor, teamFieldsAfterGameChange, teamFieldsAfterPlayerChange } from "../teamFields";
+import { opponentFor, teamFieldsAfterGameChange, teamFieldsAfterPlayerChange, teamForPlayer } from "../teamFields";
 import { resolveNflTeam } from "@/domain/teams";
 
 // Chunk 4b (Trevor/GPT 2026-11-02): Team from the picked player via the static
@@ -69,5 +69,13 @@ describe("opponentFor", () => {
 
   it("matches an exact side name for a team the table doesn't know (e.g. college)", () => {
     expect(opponentFor("Alabama Crimson Tide", { homeTeam: "Alabama Crimson Tide", awayTeam: "Georgia Bulldogs" })).toBe("Georgia Bulldogs");
+  });
+});
+
+describe("teamForPlayer", () => {
+  it("is the table name for a picked player's code, and blank for a cleared player or an unknown code", () => {
+    expect(teamForPlayer("KC")).toBe("Kansas City Chiefs");
+    expect(teamForPlayer(null)).toBe("");
+    expect(teamForPlayer("FA")).toBe("");
   });
 });

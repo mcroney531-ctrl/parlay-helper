@@ -162,3 +162,67 @@ test("Team and Opponent are recomputed on a player or game change, over typed va
   await expect(team).toHaveValue("Kansas City Chiefs");
   await expect(opponent).toHaveValue("");
 });
+
+test("a player picked before the game list loads recomputes Opponent when the game's sides arrive; opening the sheet recomputes nothing", async ({ page }) => {
+  // B's review of 1c3c2e0, C1: the events request is held back.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/events?league=NFL", async (route) => {
+    await held;
+    await route.fulfill({
+      json: { status: "ok", events: [{ eventId: "ev1", commenceTime: "2026-09-20T17:00:00.000Z", homeTeam: "Los Angeles Rams", awayTeam: "Seattle Seahawks" }] },
+    });
+  });
+  await page.route("**/api/sleeper?search=*", (route) =>
+    route.fulfill({ json: { results: [{ playerId: "p1", fullName: "Puka Nacua", team: "LAR", position: "WR" }] } }),
+  );
+  // Saved with game Seahawks @ Rams and an opponent left over from another game.
+  await seedV2(page, {
+    ideas: [idea("i1", "", { rawText: "puka overs", playerName: null, eventId: "ev1", team: "Los Angeles Rams", opponent: "San Francisco 49ers" })],
+    slips: [],
+  });
+  await page.goto("/ideas");
+  await page.getByRole("button", { name: /Complete details|Edit details/ }).click();
+  const sheet = page.getByRole("dialog", { name: /Complete details|Edit details/ });
+  await sheet.getByText("More details (team, odds, confidence, note)").click();
+  const team = sheet.getByLabel("Team", { exact: true });
+  const opponent = sheet.getByLabel("Opponent", { exact: true });
+  await expect(sheet.getByText("Loading games…")).toBeVisible();
+
+  // Picked while the sides aren't known: Team now, Opponent left as it is (pending), not blanked.
+  await sheet.getByRole("combobox", { name: "Player" }).fill("Puka");
+  await sheet.getByRole("option", { name: /Puka Nacua/ }).click();
+  await expect(team).toHaveValue("Los Angeles Rams");
+  await expect(opponent).toHaveValue("San Francisco 49ers");
+
+  // The sides arrive: the pending recompute runs.
+  release();
+  await expect(sheet.getByRole("combobox", { name: "Game" })).toHaveValue(/Seattle Seahawks @ Los Angeles Rams/);
+  await expect(opponent).toHaveValue("Seattle Seahawks");
+
+  // Opening the sheet again recomputes nothing when the game list arrives.
+  await sheet.getByLabel("Opponent", { exact: true }).fill("San Francisco 49ers");
+  await sheet.getByRole("button", { name: /^Save/ }).click();
+  await expect(sheet).toBeHidden();
+  await page.reload();
+  await page.getByRole("button", { name: /Complete details|Edit details/ }).click();
+  await sheet.getByText("More details (team, odds, confidence, note)").click();
+  await expect(sheet.getByRole("combobox", { name: "Game" })).toHaveValue(/Seattle Seahawks @ Los Angeles Rams/);
+  await expect(opponent).toHaveValue("San Francisco 49ers");
+});
+
+test("editing the text of a player's name (a typo fix) recomputes neither Team nor Opponent", async ({ page }) => {
+  // Trevor's call on 1c3c2e0: only picking a player from the list, or clearing it, recomputes.
+  await seedV2(page, {
+    ideas: [idea("i1", "Puka Nacuaa", { eventId: "ev1", team: "Los Angeles Rams", opponent: "Seattle Seahawks" })],
+    slips: [],
+  });
+  await page.goto("/ideas");
+  await card(page, "Puka Nacuaa").getByRole("button", { name: /Complete details|Edit details/ }).click();
+  const sheet = page.getByRole("dialog", { name: /Complete details|Edit details/ });
+  await sheet.getByText("More details (team, odds, confidence, note)").click();
+  await expect(sheet.getByRole("combobox", { name: "Game" })).toHaveValue(/Seattle Seahawks @ Los Angeles Rams/);
+  await sheet.getByRole("combobox", { name: "Player" }).fill("Puka Nacua");
+  await expect(sheet.getByLabel("Team", { exact: true })).toHaveValue("Los Angeles Rams");
+  await expect(sheet.getByLabel("Opponent", { exact: true })).toHaveValue("Seattle Seahawks");
+});
