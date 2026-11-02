@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { idea, seedV2 } from "./support/seed";
 import { EARLIER } from "./support/flows";
+import { storedIdea } from "./support/storage";
 
 // Chunk 4a: the details sheet. Game (which a live price needs) is no longer
 // tucked into "More details"; switching to a market with no line clears the
@@ -163,16 +164,26 @@ test("Team and Opponent are recomputed on a player or game change, over typed va
   await expect(opponent).toHaveValue("");
 });
 
-test("a player picked before the game list loads recomputes Opponent when the game's sides arrive; opening the sheet recomputes nothing", async ({ page }) => {
-  // B's review of 1c3c2e0, C1: the events request is held back.
-  let release = () => {};
-  const held = new Promise<void>((resolve) => (release = resolve));
+/** Routes the NFL game list through a gate: hold() makes the next requests wait until release(). */
+async function holdableEvents(page: Page) {
+  let gate: Promise<void> = Promise.resolve();
+  let open = () => {};
   await page.route("**/api/events?league=NFL", async (route) => {
-    await held;
+    await gate;
     await route.fulfill({
       json: { status: "ok", events: [{ eventId: "ev1", commenceTime: "2026-09-20T17:00:00.000Z", homeTeam: "Los Angeles Rams", awayTeam: "Seattle Seahawks" }] },
     });
   });
+  return {
+    hold: () => void (gate = new Promise<void>((resolve) => (open = resolve))),
+    release: () => open(),
+  };
+}
+
+test("a player picked before the game list loads blanks Opponent, then recomputes it when the game's sides arrive; opening the sheet recomputes nothing", async ({ page }) => {
+  // B's reviews of 1c3c2e0 (C1) and 4a01a3a: the events request is held back.
+  const events = await holdableEvents(page);
+  events.hold();
   await page.route("**/api/sleeper?search=*", (route) =>
     route.fulfill({ json: { results: [{ playerId: "p1", fullName: "Puka Nacua", team: "LAR", position: "WR" }] } }),
   );
@@ -189,26 +200,61 @@ test("a player picked before the game list loads recomputes Opponent when the ga
   const opponent = sheet.getByLabel("Opponent", { exact: true });
   await expect(sheet.getByText("Loading games…")).toBeVisible();
 
-  // Picked while the sides aren't known: Team now, Opponent left as it is (pending), not blanked.
+  // Picked while the sides aren't known: Team now, Opponent blank (unknown) until they arrive.
   await sheet.getByRole("combobox", { name: "Player" }).fill("Puka");
   await sheet.getByRole("option", { name: /Puka Nacua/ }).click();
   await expect(team).toHaveValue("Los Angeles Rams");
-  await expect(opponent).toHaveValue("San Francisco 49ers");
+  await expect(opponent).toHaveValue("");
 
   // The sides arrive: the pending recompute runs.
-  release();
+  events.release();
   await expect(sheet.getByRole("combobox", { name: "Game" })).toHaveValue(/Seattle Seahawks @ Los Angeles Rams/);
   await expect(opponent).toHaveValue("Seattle Seahawks");
 
-  // Opening the sheet again recomputes nothing when the game list arrives.
-  await sheet.getByLabel("Opponent", { exact: true }).fill("San Francisco 49ers");
+  // Opening the sheet again, with the list held and then arriving, recomputes nothing.
+  await opponent.fill("San Francisco 49ers");
   await sheet.getByRole("button", { name: /^Save/ }).click();
   await expect(sheet).toBeHidden();
+  events.hold();
   await page.reload();
   await page.getByRole("button", { name: /Complete details|Edit details/ }).click();
   await sheet.getByText("More details (team, odds, confidence, note)").click();
+  await expect(sheet.getByText("Loading games…")).toBeVisible();
+  await expect(opponent).toHaveValue("San Francisco 49ers");
+  events.release();
   await expect(sheet.getByRole("combobox", { name: "Game" })).toHaveValue(/Seattle Seahawks @ Los Angeles Rams/);
   await expect(opponent).toHaveValue("San Francisco 49ers");
+});
+
+test("saving before the game's sides arrive stores a blank Opponent, not a wrong one", async ({ page }) => {
+  // B's case on 4a01a3a: DK Metcalf (SEA) on a Seahawks @ Rams idea stored Opponent "Seattle Seahawks".
+  const events = await holdableEvents(page);
+  events.hold();
+  await page.route("**/api/sleeper?search=*", (route) =>
+    route.fulfill({ json: { results: [{ playerId: "p2", fullName: "DK Metcalf", team: "SEA", position: "WR" }] } }),
+  );
+  await seedV2(page, {
+    ideas: [idea("i1", "Puka Nacua", { playerId: "p1", eventId: "ev1", team: "Los Angeles Rams", opponent: "Seattle Seahawks" })],
+    slips: [],
+  });
+  await page.goto("/ideas");
+  await card(page, "Puka Nacua").getByRole("button", { name: /Complete details|Edit details/ }).click();
+  const sheet = page.getByRole("dialog", { name: /Complete details|Edit details/ });
+  await sheet.getByText("More details (team, odds, confidence, note)").click();
+  await expect(sheet.getByText("Loading games…")).toBeVisible();
+
+  await sheet.getByText("Change", { exact: true }).click();
+  await sheet.getByRole("combobox", { name: "Player" }).fill("Metcalf");
+  await sheet.getByRole("option", { name: /DK Metcalf/ }).click();
+  await expect(sheet.getByLabel("Team", { exact: true })).toHaveValue("Seattle Seahawks");
+  await expect(sheet.getByLabel("Opponent", { exact: true })).toHaveValue("");
+  await sheet.getByRole("button", { name: /^Save/ }).click();
+  await expect(sheet).toBeHidden();
+
+  const stored = await storedIdea(page, "i1");
+  expect(stored?.team).toBe("Seattle Seahawks");
+  expect(stored?.opponent).toBeNull(); // blank is stored as null
+  events.release();
 });
 
 test("editing the text of a player's name (a typo fix) recomputes neither Team nor Opponent", async ({ page }) => {

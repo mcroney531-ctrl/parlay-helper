@@ -67,3 +67,21 @@ export const clearIdeaPriceElsewhere = (page: Page, id: string) => changeElsewhe
 /** Another tab captures a new idea (a copy of `copyOf` for `playerName`) and adds it to a slip. */
 export const captureAndAddElsewhere = (page: Page, change: { slipId: string; copyOf: string; id: string; playerName: string }) =>
   changeElsewhere(page, { kind: "captureAndAdd", ...change });
+
+/** An idea exactly as stored in IndexedDB (not as the page shows it). */
+export async function storedIdea(page: Page, id: string): Promise<Record<string, unknown> | undefined> {
+  return page.evaluate(async (id) => {
+    const db = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("parlay-helper");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const result = await new Promise<Record<string, unknown> | undefined>((resolve, reject) => {
+      const get = db.transaction(["ideas"], "readonly").objectStore("ideas").get(id);
+      get.onsuccess = () => resolve(get.result);
+      get.onerror = () => reject(get.error);
+    });
+    db.close();
+    return result;
+  }, id);
+}

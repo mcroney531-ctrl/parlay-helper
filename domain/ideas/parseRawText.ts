@@ -11,8 +11,11 @@ export type ParsedIdeaHints = {
   note: string | null;
 };
 
-/** Over/Under (and O/U), and the Yes/No selections, are never a player, or part of one. */
-const NOT_A_NAME = new Set(["over", "under", "o", "u", "yes", "no"]);
+/**
+ * Over/Under (and O/U), the Yes/No selections, and bet words ("Cards ML",
+ * "Puka ATD") are never a player, or part of one.
+ */
+const NOT_A_NAME = new Set(["over", "under", "o", "u", "yes", "no", "ml", "pk", "td", "atd", "ftd", "tt", "alt", "sgp"]);
 
 /** A capitalized word; a hyphen inside it ("Amon-Ra", "Smith-Njigba") keeps it one word. */
 const NAME_WORD = /^[A-Z][a-zA-Z'.]*(?:-[A-Za-z][a-zA-Z'.]*)*/;

@@ -221,7 +221,8 @@ export function IdeaDetailsSheet({
                 if (how === "typed") return; // a typo fix isn't a new player
                 const code = how === "picked" ? team : null;
                 if (gameTeams === undefined) {
-                  set("team", teamForPlayer(code));
+                  // Unknown until the sides arrive, so blank: a Save before then stores no Opponent (B's review of 4a01a3a).
+                  setTeamFields({ team: teamForPlayer(code), opponent: "" });
                   opponentPending.current = true;
                 } else {
                   opponentPending.current = false;

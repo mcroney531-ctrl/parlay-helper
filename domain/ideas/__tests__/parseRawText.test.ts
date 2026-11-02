@@ -46,6 +46,13 @@ const rows: [input: string, expected: { playerName: string | null; team: string 
   ["O 47.5", { playerName: null, team: null, note: null }],
   ["U47.5", { playerName: null, team: null, note: null }],
   ["Puka Over 63.5", { playerName: "Puka", team: null, note: null }],
+  // Nor are bet words (B, on 4a01a3a).
+  ["Cards ML", { playerName: "Cards", team: null, note: null }],
+  ["Puka ATD", { playerName: "Puka", team: null, note: null }],
+  ["Puka TD -150", { playerName: "Puka", team: null, note: null }],
+  ["Bijan Robinson FTD", { playerName: "Bijan Robinson", team: null, note: null }],
+  ["Kelce TT over 5.5", { playerName: "Kelce", team: null, note: null }],
+  ["PK Rams", { playerName: null, team: null, note: null }],
   // Players, as before.
   ["Puka 80+ Sunday - like matchup", { playerName: "Puka", team: null, note: "like matchup" }],
   ["Puka Nacua over 63.5", { playerName: "Puka Nacua", team: null, note: null }],
