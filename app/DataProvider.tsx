@@ -49,6 +49,8 @@ const DataContext = createContext<DataContextValue | null>(null);
 
 const ACTIVE_CANDIDATE_KEY = "parlay-helper:active-candidate-id";
 
+const newestFirst = (ideas: CapturedIdea[]) => ideas.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+
 export function DataProvider({ children }: { children: React.ReactNode }) {
   const [ideas, setIdeas] = useState<CapturedIdea[]>([]);
   const [candidates, setCandidates] = useState<CandidateParlay[]>([]);
@@ -67,18 +69,27 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   const refreshIdeas = useCallback(async () => {
     try {
-      const all = await listIdeas();
-      setIdeas(all.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
+      setIdeas(newestFirst(await listIdeas()));
     } catch (err) {
       setStorageError(err instanceof Error ? err.message : "Failed to load ideas");
     }
   }, []);
 
+  // Slips always reload WITH ideas (B's review of 9a333b2, R1). A slip's legs
+  // are resolved against the ideas in memory, so slips newer than those ideas
+  // would show a leg another tab just added as "Original idea deleted", and
+  // block Mark Placed on it. Slips are read FIRST: another tab saves an idea
+  // before a slip refers to it, so ideas read afterwards include every idea a
+  // freshly read slip can name. Both are set in one batch, so no render sees
+  // one without the other.
   const refreshCandidates = useCallback(async () => {
     try {
-      setCandidates(await listCandidates());
+      const nextCandidates = await listCandidates();
+      const nextIdeas = await listIdeas();
+      setCandidates(nextCandidates);
+      setIdeas(newestFirst(nextIdeas));
     } catch (err) {
-      setStorageError(err instanceof Error ? err.message : "Failed to load candidates");
+      setStorageError(err instanceof Error ? err.message : "Failed to load your slips");
     }
   }, []);
 

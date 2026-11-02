@@ -6,9 +6,8 @@ import { isPlaced } from "@/domain/candidates/candidateState";
 import { ChevronRightIcon } from "@/components/icons";
 
 /**
- * Persistent one-tap link to the current slip, shown on Capture and Ideas
- * so the user never has to remember "Build" is where their in-progress
- * candidate lives — it's surfaced everywhere that feeds it.
+ * Persistent one-tap link to the current slip, shown on Ideas so the user
+ * never has to go looking for where their in-progress slip lives.
  */
 export function CurrentSlipTray() {
   const { activeCandidate, candidates, finalized, lastSlipPlaced, loading } = useData();
@@ -28,7 +27,7 @@ export function CurrentSlipTray() {
         : "Start a new slip";
     return (
       <Link
-        href="/builder"
+        href="/slip"
         className="flex items-center justify-between rounded-[var(--radius-control)] border px-4 py-3 text-sm font-semibold"
         style={{ borderColor: "var(--color-border)", background: "var(--color-surface)", color: "var(--color-action)" }}
       >
@@ -40,7 +39,7 @@ export function CurrentSlipTray() {
 
   return (
     <Link
-      href="/builder"
+      href="/slip"
       className="flex items-center justify-between rounded-[var(--radius-control)] px-4 py-3 text-sm font-semibold"
       style={{ background: "var(--color-brand)", color: "#ffffff" }}
     >

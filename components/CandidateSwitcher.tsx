@@ -56,7 +56,7 @@ export function CandidateSwitcher({
   }
 
   async function handleDelete(candidate: CandidateParlay) {
-    if (!window.confirm(`Delete candidate "${candidate.name}"? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete slip "${candidate.name}"? This cannot be undone.`)) return;
     await deleteCandidate(candidate.id);
     await refreshCandidates();
     if (activeId === candidate.id) {
@@ -67,7 +67,7 @@ export function CandidateSwitcher({
 
   return (
     <div className="flex flex-col gap-2">
-      <div role="tablist" aria-label="Candidate parlays" className="flex items-center gap-2 overflow-x-auto pb-1">
+      <div role="tablist" aria-label="Slips" className="flex items-center gap-2 overflow-x-auto pb-1">
         {/* Placed slips are never the current slip (INV-7), so they aren't offered as one. */}
         {candidates.filter((c) => !isPlaced(c)).map((candidate) => (
           <button
@@ -88,7 +88,7 @@ export function CandidateSwitcher({
         <button
           type="button"
           onClick={() => setCreating(true)}
-          aria-label="New candidate"
+          aria-label="New slip"
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border"
           style={{ borderColor: "var(--color-border)", color: "var(--color-action)" }}
         >

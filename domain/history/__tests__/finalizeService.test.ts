@@ -73,7 +73,7 @@ describe("finalizeCandidate", () => {
 
   it("refuses to finalize a candidate with no legs", async () => {
     const candidate = await createCandidate("Empty", "FanDuel");
-    await expect(finalizeCandidate(candidate.id, await seen(candidate.id))).rejects.toThrow();
+    await expect(finalizeCandidate(candidate.id, await seen(candidate.id))).rejects.toThrow("This slip has no legs.");
   });
 
   it("is unaffected by later edits to the source idea", async () => {
@@ -169,7 +169,10 @@ describe("finalizeCandidate", () => {
     });
     const candidate = await createCandidate("Sunday Core", "FanDuel");
     await addLegToCandidate(candidate.id, idea.id);
-    const finalized = await finalizeCandidate(candidate.id, await seen(candidate.id));
+    // No price of any kind: placed with the user's consent (INV-17).
+    const finalized = await finalizeCandidate(candidate.id, await seen(candidate.id), {
+      acknowledgedUnpricedLegIds: [idea.id],
+    });
 
     expect(finalized.legSnapshots[0].playerId).toBe("4046");
 

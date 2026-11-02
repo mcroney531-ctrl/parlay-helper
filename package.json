@@ -11,7 +11,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:upgrade": "node scripts/e2e-upgrade.mjs"
   },
   "dependencies": {
     "idb": "^8.0.3",

@@ -8,30 +8,52 @@ import { CheckCircleIcon } from "@/components/icons";
 
 const DRAFT_KEY = "parlay-helper:quick-add-draft";
 
-export function QuickAddForm() {
+/**
+ * focusOnOpen is asked once, when the form mounts: the Ideas screen says no
+ * in add mode, where the user came to pick ideas, not type one.
+ */
+export function QuickAddForm({ focusOnOpen = () => true }: { focusOnOpen?: () => boolean }) {
   const { refreshIdeas } = useData();
-  const [text, setText] = useState(() => {
-    try {
-      return window.localStorage.getItem(DRAFT_KEY) ?? "";
-    } catch {
-      // localStorage may be unavailable (private mode); draft preservation
-      // is a convenience, not a requirement.
-      return "";
-    }
-  });
+  // Empty on the first render, as in the prerendered HTML this form now
+  // hydrates; the saved draft is loaded once mounted (below).
+  const [text, setText] = useState("");
+  // State, not a ref: a StrictMode replay of the save effect runs with the
+  // first render's values, where this is still false, so it can't remove the
+  // draft before the load's text is committed (H1, B's review of e004b24).
+  const [draftLoaded, setDraftLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const focusOnOpenRef = useRef(focusOnOpen);
 
   useEffect(() => {
+    // Nothing is saved until the load below has committed its text: the
+    // first, empty render would otherwise delete the saved draft.
+    if (!draftLoaded) return;
     try {
       if (text) window.localStorage.setItem(DRAFT_KEY, text);
       else window.localStorage.removeItem(DRAFT_KEY);
     } catch {
-      // see above
+      // see the draft load below
     }
-  }, [text]);
+  }, [text, draftLoaded]);
+
+  useEffect(() => {
+    // Text typed into the prerendered box before hydration wins over the
+    // saved draft; either becomes the box's state.
+    const typed = inputRef.current?.value ?? "";
+    let saved = "";
+    try {
+      saved = window.localStorage.getItem(DRAFT_KEY) ?? "";
+    } catch {
+      // localStorage may be unavailable (private mode); draft preservation
+      // is a convenience, not a requirement.
+    }
+    if (typed || saved) setText(typed || saved);
+    setDraftLoaded(true);
+    if (focusOnOpenRef.current()) inputRef.current?.focus();
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -41,7 +63,7 @@ export function QuickAddForm() {
     try {
       await captureInstantIdea(text);
       setText("");
-      setSavedMessage("Saved to Bucket.");
+      setSavedMessage("Saved to Ideas.");
       await refreshIdeas();
       inputRef.current?.focus();
       window.setTimeout(() => setSavedMessage(null), 2500);
@@ -74,7 +96,6 @@ export function QuickAddForm() {
         rows={3}
         className="text-base"
         style={{ background: "var(--color-canvas)" }}
-        autoFocus
       />
       <Button type="submit" disabled={!text.trim() || saving} className="w-full">
         {saving ? "Saving…" : "Save idea"}

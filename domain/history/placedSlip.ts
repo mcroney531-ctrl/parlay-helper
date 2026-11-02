@@ -15,6 +15,19 @@ export function placedSlipFor(record: FinalizedParlay, candidates: CandidateParl
   return slip && isPlaced(slip) ? slip : null;
 }
 
+/**
+ * The one quiet line under a History record that can't be cloned, or null
+ * when its slip is still there. A legacy record (placed before slip
+ * tracking; no candidateId, never inferred) and an orphaned one (its slip
+ * was deleted) are shown as they are, with no badge and no status.
+ */
+export function unclonableRecordNote(record: FinalizedParlay, slip: CandidateParlay | null): string | null {
+  if (slip) return null;
+  return record.candidateId
+    ? "Original slip deleted; can't be cloned."
+    : "Placed before slip tracking; can't be cloned.";
+}
+
 /** INV-15's confirm text: deleting a placed slip never touches its History record. */
 export function deletePlacedSlipConfirmText(slipName: string): string {
   return `Delete the slip "${slipName}"? Its History record stays exactly as it is; you just won't be able to clone it from here anymore.`;

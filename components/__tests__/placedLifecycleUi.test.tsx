@@ -14,7 +14,7 @@ vi.mock("next/link", () => ({
 }));
 
 import { IDBFactory } from "fake-indexeddb";
-import { completePlacement, FinalizeSection, MarkPlacedConfirm } from "../FinalizeSection";
+import { completePlacement, FinalizeSection, MarkPlacedConfirm, markPlacedQuestion } from "../FinalizeSection";
 import { CurrentSlipTray } from "../CurrentSlipTray";
 import { NoCurrentSlip } from "../NoCurrentSlip";
 import { cloneToNewSlip, PlacedSlipActions } from "../PlacedSlipActions";
@@ -50,7 +50,7 @@ beforeEach(() => {
 describe("Mark Placed has a confirm step (INV-1)", () => {
   it("before a tap: only the Mark Placed button, no confirmation yet", () => {
     data.value = { refreshCandidates: noop, refreshFinalized: noop, setActiveCandidateId: () => {} };
-    const html = renderToStaticMarkup(<FinalizeSection candidateId="s1" slipName="Sunday Core" seenRevision={0} legCount={2} />);
+    const html = renderToStaticMarkup(<FinalizeSection candidateId="s1" slipName="Sunday Core" seenRevision={0} legCount={2} unpricedLegIds={[]} deletedLegCount={0} otherBookCaptureCount={0} />);
     expect(html).toMatch(/<button[^>]*>Mark Placed<\/button>/);
     expect(html).not.toContain("Confirm Mark Placed");
   });
@@ -61,6 +61,27 @@ describe("Mark Placed has a confirm step (INV-1)", () => {
     expect(html).toContain("can’t be edited or placed again");
     expect(html).toContain("Yes, mark placed");
     expect(html).toContain("Cancel");
+  });
+
+  it("warns about unpriced legs before asking (INV-17): every leg, some legs, or none", () => {
+    expect(markPlacedQuestion("Sunday Core", 3, 3)).toEqual({
+      warning: null,
+      question: "No current prices are available for this slip. Mark it placed anyway?",
+    });
+    expect(markPlacedQuestion("Sunday Core", 1, 4)).toEqual({
+      warning: "1 of 4 legs has no current price.",
+      question: "Mark “Sunday Core” as placed?",
+    });
+    expect(markPlacedQuestion("Sunday Core", 2, 4).warning).toBe("2 of 4 legs have no current price.");
+    expect(markPlacedQuestion("Sunday Core", 0, 4)).toEqual({ warning: null, question: "Mark “Sunday Core” as placed?" });
+  });
+
+  it("the confirm shows the unpriced warning it was given", () => {
+    const html = renderToStaticMarkup(
+      <MarkPlacedConfirm slipName="Sunday Core" unpricedCount={1} legCount={3} saving={false} onConfirm={() => {}} onCancel={() => {}} />,
+    );
+    expect(html).toContain("1 of 3 legs has no current price.");
+    expect(html).toContain("Mark “Sunday Core” as placed?");
   });
 });
 
@@ -181,7 +202,7 @@ describe("the lifecycle handlers, driven directly (no DOM harness in this repo)"
 
     expect(cloneId).not.toBe(source.id);
     expect(r.pointer()).toBe(cloneId);
-    expect(r.calls).toEqual(["refreshCandidates", `pointer:${cloneId}`, "navigate:/builder"]);
+    expect(r.calls).toEqual(["refreshCandidates", `pointer:${cloneId}`, "navigate:/slip"]);
     expect(await getCandidate(cloneId)).toMatchObject({ status: "draft", ideaIds: ["idea-1"] });
   });
 });

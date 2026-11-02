@@ -1,5 +1,6 @@
 "use client";
 
+import { usePageBuildStamp } from "@/components/pageBuildStamp";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useData } from "@/app/DataProvider";
@@ -12,7 +13,7 @@ import { PlayerAvatar } from "@/components/PlayerAvatar";
 import { sleeperHeadshotUrl } from "@/components/sleeperImage";
 import { SearchIcon } from "@/components/icons";
 import type { CandidateParlay, FinalizedParlay } from "@/domain/types";
-import { placedSlipFor } from "@/domain/history/placedSlip";
+import { placedSlipFor, unclonableRecordNote } from "@/domain/history/placedSlip";
 import { PlacedSlipActions } from "@/components/PlacedSlipActions";
 
 function formatAmerican(value: number | null): string {
@@ -42,6 +43,7 @@ function FinalizedCard({
   const shownLegs = expanded ? parlay.legSnapshots : parlay.legSnapshots.slice(0, PREVIEW_LEG_COUNT);
   const remaining = parlay.legSnapshots.length - shownLegs.length;
   const hasActual = parlay.actualSportsbookOddsAmerican !== null || parlay.actualSportsbookPayoutCents !== null;
+  const unclonableNote = unclonableRecordNote(parlay, slip);
 
   return (
     <Card selected={expanded} className="flex flex-col gap-2">
@@ -128,11 +130,17 @@ function FinalizedCard({
         </button>
       )}
       {expanded && slip && <PlacedSlipActions slip={slip} />}
+      {expanded && unclonableNote && (
+        <p className="border-t pt-2 text-xs" style={{ borderColor: "var(--color-border)", color: "var(--color-muted)" }}>
+          {unclonableNote}
+        </p>
+      )}
     </Card>
   );
 }
 
 export default function HistoryPage() {
+  usePageBuildStamp(process.env.NEXT_PUBLIC_APP_BUILD);
   const { finalized, candidates, loading } = useData();
   const [search, setSearch] = useState("");
   const [sportsbookFilter, setSportsbookFilter] = useState("all");
@@ -165,12 +173,12 @@ export default function HistoryPage() {
       <PageShell title="HISTORY" icon={<HistoryIcon className="h-8 w-8" />}>
         <div className="flex flex-col items-center gap-4 rounded-[var(--radius-card)] border px-4 py-10 text-center" style={{ borderColor: "var(--color-border)" }}>
           <p className="text-base font-semibold" style={{ color: "var(--color-ink)" }}>
-            Nothing finalized yet
+            Nothing placed yet
           </p>
           <p className="max-w-xs text-sm" style={{ color: "var(--color-muted)" }}>
-            Once you finalize a slip, it shows up here as a permanent, read-only record — never edited or graded.
+            Once you mark a slip placed, it shows up here as a permanent, read-only record — never edited or graded.
           </p>
-          <Link href="/builder">
+          <Link href="/slip">
             <Button>Go to current slip</Button>
           </Link>
         </div>
@@ -183,7 +191,7 @@ export default function HistoryPage() {
       <div className="flex flex-col gap-4">
         <div className="flex items-baseline justify-between gap-2">
           <p className="text-sm font-semibold" style={{ color: "var(--color-ink)" }}>
-            {finalized.length} finalized slip{finalized.length === 1 ? "" : "s"}
+            {finalized.length} placed slip{finalized.length === 1 ? "" : "s"}
           </p>
           <Select
             value={sportsbookFilter}
@@ -206,8 +214,8 @@ export default function HistoryPage() {
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search candidate, player, bet ID"
-            aria-label="Search finalized slips"
+            placeholder="Search slip, player, bet ID"
+            aria-label="Search placed slips"
             className="pl-9"
           />
         </div>
@@ -218,7 +226,7 @@ export default function HistoryPage() {
           </p>
         ) : filtered.length === 0 ? (
           <p className="text-sm" style={{ color: "var(--color-muted)" }}>
-            No finalized slips match these filters.
+            No placed slips match these filters.
           </p>
         ) : (
           <ul className="flex flex-col gap-3">

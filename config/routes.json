@@ -1,0 +1,8 @@
+{
+  "canonical": ["/ideas", "/slip", "/history"],
+  "aliases": {
+    "/capture": "/ideas",
+    "/bucket": "/ideas",
+    "/builder": "/slip"
+  }
+}

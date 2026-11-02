@@ -20,7 +20,7 @@ test("Escape in the player search closes the suggestions, not the sheet; a secon
     ideas: [idea("i1", "", { rawText: "puka overs", playerName: null, marketKey: null, selection: null })],
     slips: [],
   });
-  await page.goto("/bucket");
+  await page.goto("/ideas");
 
   await page.getByRole("button", { name: "Complete details" }).click();
   const sheet = page.getByRole("dialog", { name: "Complete details" });

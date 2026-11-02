@@ -12,6 +12,8 @@ export default defineConfig({
   testDir: "./e2e",
   // *.e2e.ts, so Vitest's default *.test / *.spec globs never pick these up.
   testMatch: "**/*.e2e.ts",
+  // Puts public/sw.js back if a killed service-worker check left it rewritten.
+  globalSetup: "./e2e/global-setup.ts",
   // ONE worker, deliberately. With two, the local production server
   // intermittently left a page's whole first burst of static assets (fonts,
   // CSS, JS chunks) pending, so its navigation never fired `load` and timed

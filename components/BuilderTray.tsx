@@ -17,6 +17,7 @@ export function BuilderTray({
   estimatedOddsAmerican,
   estimatedPayoutCents,
   unpricedLegCount,
+  deletedLegCount,
   expanded,
   onToggle,
 }: {
@@ -25,6 +26,8 @@ export function BuilderTray({
   estimatedPayoutCents: number | null;
   /** Legs with neither a current nor a capture price. Any at all means there is no estimate, so the tray says why. */
   unpricedLegCount: number;
+  /** Legs whose idea was deleted. Counted apart from unpriced legs, and said first: the slip can't be placed until they're removed. */
+  deletedLegCount: number;
   expanded: boolean;
   onToggle: () => void;
 }) {
@@ -48,7 +51,11 @@ export function BuilderTray({
           {legCount} leg{legCount === 1 ? "" : "s"}
         </span>
         <span className="flex items-center gap-3 text-sm">
-          {unpricedLegCount > 0 ? (
+          {deletedLegCount > 0 ? (
+            <span className="text-xs font-medium" style={{ color: "var(--color-missing-fg)" }}>
+              {deletedLegCount} deleted leg{deletedLegCount === 1 ? "" : "s"} to remove
+            </span>
+          ) : unpricedLegCount > 0 ? (
             <span className="text-xs font-medium" style={{ color: "var(--color-missing-fg)" }}>
               {unpricedLegCount} of {legCount} leg{legCount === 1 ? "" : "s"} {unpricedLegCount === 1 ? "has" : "have"} no price
             </span>

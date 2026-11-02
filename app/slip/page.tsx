@@ -1,6 +1,8 @@
 "use client";
 
+import { usePageBuildStamp } from "@/components/pageBuildStamp";
 import { useState } from "react";
+import { useAppNavigate } from "@/components/appNavigation";
 import { useData } from "@/app/DataProvider";
 import { CandidateSwitcher } from "@/components/CandidateSwitcher";
 import { BuilderTray } from "@/components/BuilderTray";
@@ -9,33 +11,22 @@ import { EstimatePanel } from "@/components/EstimatePanel";
 import { RuleBanners } from "@/components/RuleBanners";
 import { PromoAndStakePanel } from "@/components/PromoAndStakePanel";
 import { FinalizeSection } from "@/components/FinalizeSection";
-import { AddIdeasSheet } from "@/components/AddIdeasSheet";
 import { PageShell } from "@/components/PageShell";
 import { BuildIcon, PlusIcon } from "@/components/icons";
 import { Button } from "@/components/FormControls";
 import { NoCurrentSlip } from "@/components/NoCurrentSlip";
-import {
-  calculateCombinedEstimate,
-  calculatePayoutCents,
-  hasSameGameCombination,
-  legPriceInputs,
-} from "@/domain/odds/estimate";
+import { DeletedLegCard } from "@/components/DeletedLegCard";
+import { calculatePayoutCents, calculateSlipEstimate, unpricedLegIds } from "@/domain/odds/estimate";
 import { SportsbookSupportHint } from "@/components/SportsbookSupportHint";
-import { detectCorrelationSignals } from "@/domain/rules/correlation";
-import { detectConcentrationSignals } from "@/domain/rules/concentration";
+import { detectSlipSignals } from "@/domain/rules/slipSignals";
 import { removeLegFromCandidate } from "@/domain/candidates/candidateService";
 import { candidateRevision } from "@/domain/candidates/candidateState";
+import { ideaLookup, presentIdeas, resolveSlipLegs } from "@/domain/candidates/slipLegs";
 import { describeRefreshNotice, describeRefreshProblem, refreshCandidateContext } from "@/domain/odds/refreshService";
 import { liveContextKey } from "@/storage/indexeddb/repositories/liveContextRepository";
 
-function kickoffWindowFor(scheduledStart: string | null): string | null {
-  if (!scheduledStart) return null;
-  const date = new Date(scheduledStart);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString().slice(0, 13); // hour-granularity bucket
-}
-
 export default function BuilderPage() {
+  usePageBuildStamp(process.env.NEXT_PUBLIC_APP_BUILD);
   const {
     candidates,
     ideas,
@@ -50,7 +41,7 @@ export default function BuilderPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [refreshNotice, setRefreshNotice] = useState<string | null>(null);
-  const [addingIdeas, setAddingIdeas] = useState(false);
+  const navigate = useAppNavigate();
 
   const candidate = candidates.find((c) => c.id === activeCandidateId) ?? null;
   const sportsbook = candidate?.sportsbook ?? "";
@@ -58,30 +49,19 @@ export default function BuilderPage() {
     return liveContextByKey[liveContextKey(ideaId, sportsbook)];
   }
 
-  const legs = candidate
-    ? candidate.ideaIds.map((id) => ideas.find((idea) => idea.id === id)).filter((v) => v !== undefined)
-    : [];
+  // Every stored leg, in order. A leg whose idea was deleted stays on the slip
+  // as a deleted leg the user can remove; it is never silently dropped.
+  const legs = candidate ? resolveSlipLegs(candidate.ideaIds, ideaLookup(ideas)) : [];
+  const present = presentIdeas(legs);
 
-  const estimate = calculateCombinedEstimate(legPriceInputs(legs, sportsbook, liveContextFor));
-  const unpricedLegCount = estimate.legSources.filter((leg) => leg.source === "unavailable").length;
+  const estimate = calculateSlipEstimate(legs, sportsbook, liveContextFor);
+  const unpriced = unpricedLegIds(estimate);
+  const resolvedPrice = new Map(estimate.legSources.map((leg) => [leg.ideaId, leg]));
 
   const payoutCents =
     estimate.ok && candidate ? calculatePayoutCents(candidate.stakeCents, estimate.decimalOdds) : null;
 
-  const isSameGame = hasSameGameCombination(legs.map((leg) => ({ eventId: leg.eventId })));
-
-  const correlationSignals = detectCorrelationSignals(
-    legs.map((leg) => ({ ideaId: leg.id, eventId: leg.eventId })),
-  );
-
-  const concentrationSignals = detectConcentrationSignals(
-    legs.map((leg) => ({
-      ideaId: leg.id,
-      eventId: leg.eventId,
-      team: leg.team,
-      kickoffWindow: kickoffWindowFor(liveContextFor(leg.id)?.scheduledStart ?? null),
-    })),
-  );
+  const signals = detectSlipSignals(legs, (ideaId) => liveContextFor(ideaId)?.scheduledStart ?? null);
 
   async function handleRemoveLeg(ideaId: string) {
     if (!candidate) return;
@@ -155,7 +135,7 @@ export default function BuilderPage() {
               <p className="max-w-xs text-sm" style={{ color: "var(--color-muted)" }}>
                 Add a few ideas to see the estimated odds, correlation, and concentration context for this slip.
               </p>
-              <Button onClick={() => setAddingIdeas(true)} className="flex items-center gap-1.5">
+              <Button onClick={() => navigate(`/ideas?add=${candidate.id}`)} className="flex items-center gap-1.5">
                 <PlusIcon className="h-4 w-4" />
                 Add ideas
               </Button>
@@ -173,7 +153,7 @@ export default function BuilderPage() {
                   {legs.length} leg{legs.length === 1 ? "" : "s"}
                   <span aria-hidden="true">{expanded ? "▾" : "▸"}</span>
                 </button>
-                <Button variant="text" onClick={() => setAddingIdeas(true)} className="flex items-center gap-1 text-sm">
+                <Button variant="text" onClick={() => navigate(`/ideas?add=${candidate.id}`)} className="flex items-center gap-1 text-sm">
                   <PlusIcon className="h-3.5 w-3.5" />
                   Add ideas
                 </Button>
@@ -183,7 +163,8 @@ export default function BuilderPage() {
                 legCount={legs.length}
                 estimatedOddsAmerican={estimate.ok ? estimate.americanOdds : null}
                 estimatedPayoutCents={payoutCents}
-                unpricedLegCount={unpricedLegCount}
+                unpricedLegCount={unpriced.length}
+                deletedLegCount={estimate.missingLegIds.length}
                 expanded={expanded}
                 onToggle={() => setExpanded((v) => !v)}
               />
@@ -191,24 +172,35 @@ export default function BuilderPage() {
               {expanded && (
                 <div className="flex flex-col gap-4">
                   <ul className="flex flex-col gap-2.5">
-                    {legs.map((leg) => (
-                      <PropLegCard
-                        key={leg.id}
-                        idea={leg}
-                        liveContext={liveContextFor(leg.id)}
-                        slipSportsbook={sportsbook}
-                        onRemove={() => handleRemoveLeg(leg.id)}
-                      />
-                    ))}
+                    {legs.map((leg) =>
+                      leg.kind === "present" ? (
+                        <PropLegCard
+                          key={leg.ideaId}
+                          idea={leg.idea}
+                          liveContext={liveContextFor(leg.ideaId)}
+                          slipSportsbook={sportsbook}
+                          resolvedPrice={resolvedPrice.get(leg.ideaId)}
+                          onRemove={() => handleRemoveLeg(leg.ideaId)}
+                        />
+                      ) : (
+                        <DeletedLegCard key={leg.ideaId} onRemove={() => handleRemoveLeg(leg.ideaId)} />
+                      ),
+                    )}
                   </ul>
 
-                  <RuleBanners correlationSignals={correlationSignals} concentrationSignals={concentrationSignals} legs={legs} />
+                  <RuleBanners
+                    correlationSignals={signals.correlation}
+                    concentrationSignals={signals.concentration}
+                    legs={present}
+                    deletedLegCount={signals.deletedLegCount}
+                  />
 
                   <EstimatePanel
                     estimate={estimate}
+                    sportsbook={candidate.sportsbook}
                     stakeCents={candidate.stakeCents}
                     payoutCents={payoutCents}
-                    isSameGame={isSameGame}
+                    isSameGame={signals.sameGame}
                   />
 
                   <PromoAndStakePanel candidate={candidate} />
@@ -220,13 +212,17 @@ export default function BuilderPage() {
                     slipName={candidate.name}
                     seenRevision={candidateRevision(candidate)}
                     legCount={legs.length}
+                    unpricedLegIds={unpriced}
+                    deletedLegCount={estimate.missingLegIds.length}
+                    otherBookCaptureCount={
+                      estimate.legSources.filter((leg) => leg.source === "capture" && leg.captureBook?.match !== "same").length
+                    }
                   />
                 </div>
               )}
             </>
           )}
 
-          {addingIdeas && <AddIdeasSheet candidate={candidate} onClose={() => setAddingIdeas(false)} />}
         </div>
       )}
     </PageShell>

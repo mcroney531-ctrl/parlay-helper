@@ -1,4 +1,4 @@
-import type { CombinedEstimate } from "@/domain/odds/estimate";
+import type { SlipEstimate } from "@/domain/odds/estimate";
 import { Card } from "@/components/Card";
 import { InfoIcon } from "@/components/icons";
 
@@ -10,13 +10,34 @@ function formatCents(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+/**
+ * Why there's no estimate when legs have no price at the slip's book. A leg
+ * whose market the book isn't offering may still have a capture price; it's
+ * deliberately not used, so this never says the leg has no capture price.
+ */
+export function missingPriceMessage(estimate: SlipEstimate, slipSportsbook: string): string {
+  if (estimate.ok || estimate.reason !== "missing_price") return "";
+  const book = slipSportsbook.trim() || "this slip's book";
+  const n = estimate.unavailableLegIds.length;
+  const head = `Estimate cannot be calculated — ${n} leg${n === 1 ? " has" : "s have"} no price at ${book}.`;
+  const notOffered = estimate.legSources.filter((l) => l.unavailableReason === "market_not_offered").length;
+  if (notOffered === 0) return head;
+  if (notOffered === n) {
+    return `${head} ${book} isn't offering ${n === 1 ? "its market" : "their markets"}, so no captured price is used.`;
+  }
+  return `${head} For ${notOffered} of them, ${book} isn't offering the market, so no captured price is used.`;
+}
+
 export function EstimatePanel({
   estimate,
+  sportsbook,
   stakeCents,
   payoutCents,
   isSameGame,
 }: {
-  estimate: CombinedEstimate;
+  estimate: SlipEstimate;
+  /** The slip's book, as typed. */
+  sportsbook: string;
   stakeCents: number;
   payoutCents: number | null;
   isSameGame: boolean;
@@ -49,14 +70,14 @@ export function EstimatePanel({
 
       {!estimate.ok && estimate.reason === "missing_price" && (
         <p className="mt-2 text-xs font-medium" style={{ color: "var(--color-danger)" }}>
-          Estimate cannot be calculated — {estimate.unavailableLegIds.length} leg(s) have no capture or current
-          price.
-          {(() => {
-            const notOffered = estimate.legSources.filter((l) => l.unavailableReason === "market_not_offered").length;
-            return notOffered > 0
-              ? ` ${notOffered} of those ${notOffered === 1 ? "is" : "are"} not currently offered by this sportsbook.`
-              : "";
-          })()}
+          {missingPriceMessage(estimate, sportsbook)}
+        </p>
+      )}
+      {!estimate.ok && estimate.reason === "deleted_legs" && (
+        <p className="mt-2 text-xs font-medium" style={{ color: "var(--color-danger)" }}>
+          Estimate cannot be calculated — {estimate.missingLegIds.length} leg
+          {estimate.missingLegIds.length === 1 ? "'s idea was" : "s' ideas were"} deleted. Remove{" "}
+          {estimate.missingLegIds.length === 1 ? "it" : "them"} to see an estimate.
         </p>
       )}
       {!estimate.ok && estimate.reason === "no_legs" && (

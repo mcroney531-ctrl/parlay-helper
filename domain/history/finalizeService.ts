@@ -1,13 +1,20 @@
-import type { CapturedIdea, FinalizedLegSnapshot, FinalizedParlay } from "@/domain/types";
+import type { FinalizedLegSnapshot, FinalizedParlay } from "@/domain/types";
 import {
-  calculateCombinedEstimate,
   calculatePayoutCents,
-  legPriceInputs,
+  calculateSlipEstimate,
   snapshotLegPrice,
+  unpricedLegIds,
 } from "@/domain/odds/estimate";
 import { isValidAmericanOdds } from "@/domain/odds/conversion";
 import { candidateRevision, isPlaced } from "@/domain/candidates/candidateState";
-import { AlreadyPlacedError, CandidateNotFoundError, StaleCandidateError } from "@/domain/candidates/errors";
+import { missingLegIds, presentIdeas, resolveSlipLegs } from "@/domain/candidates/slipLegs";
+import {
+  AlreadyPlacedError,
+  CandidateNotFoundError,
+  DeletedLegsError,
+  StaleCandidateError,
+  UnpricedConsentError,
+} from "@/domain/candidates/errors";
 import { revisionsSeenFrom, settleOwnEdits } from "@/domain/candidates/ownEdits";
 import {
   getAllFinalizedParlays,
@@ -28,6 +35,13 @@ export type FinalizeOptions = {
   actualSportsbookPayoutCents?: number | null;
   sportsbookBetId?: string;
   note?: string;
+  /**
+   * INV-17: the legs the confirm step showed as having no current price,
+   * frozen when that warning was shown. Placement is rejected if, at commit,
+   * any other present leg has no price. Missing means none were shown: a slip
+   * whose legs are all priced.
+   */
+  acknowledgedUnpricedLegIds?: readonly string[];
 };
 
 /**
@@ -50,6 +64,12 @@ export type FinalizeOptions = {
  * stored at commit time is what's recorded; nothing is fetched here. A price
  * refreshed after the user's view is fine to use, because the snapshot records
  * the price itself.
+ *
+ * Two more rejections, in this order, also with nothing written: a leg whose
+ * idea no longer exists (DeletedLegsError; no consent covers it), then a
+ * present leg with no price at commit that isn't in
+ * options.acknowledgedUnpricedLegIds (UnpricedConsentError, INV-17). A leg
+ * that was unpriced when confirmed and has a price now is fine.
  */
 export async function finalizeCandidate(
   candidateId: string,
@@ -112,23 +132,28 @@ function planPlacement(
     throw new StaleCandidateError(candidateId, seenRevision, candidateRevision(candidate));
   }
   if (candidate.ideaIds.length === 0) {
-    throw new Error("Cannot finalize a candidate with no legs");
+    throw new Error("This slip has no legs.");
   }
 
-  const missingIdeaIds = candidate.ideaIds.filter((ideaId) => !ideas.has(ideaId));
-  if (missingIdeaIds.length > 0) {
-    throw new Error(
-      `Cannot finalize: ${missingIdeaIds.length} leg(s) reference an idea that no longer exists (${missingIdeaIds.join(", ")}). Remove them from the candidate first.`,
-    );
+  const slipLegs = resolveSlipLegs(candidate.ideaIds, (ideaId) => ideas.get(ideaId));
+  const missing = missingLegIds(slipLegs);
+  if (missing.length > 0) {
+    throw new DeletedLegsError(candidateId, missing);
   }
-  const legs = candidate.ideaIds.map((ideaId) => ideas.get(ideaId) as CapturedIdea);
+  const legs = presentIdeas(slipLegs);
 
   // INV-12: each leg's price is resolved ONCE, by the same resolver and from
-  // the same inputs as the builder's estimate, and that one resolution is both
-  // what the saved estimate multiplies and what the leg's snapshot records.
-  const estimate = calculateCombinedEstimate(
-    legPriceInputs(legs, candidate.sportsbook, (ideaId) => liveContexts.get(ideaId)),
-  );
+  // the same inputs as the Slip screen's estimate, and that one resolution is
+  // both what the saved estimate multiplies and what the leg's snapshot records.
+  const estimate = calculateSlipEstimate(slipLegs, candidate.sportsbook, (ideaId) => liveContexts.get(ideaId));
+
+  // INV-17: never place on a missing price the user wasn't warned about.
+  const acknowledged = new Set(options.acknowledgedUnpricedLegIds ?? []);
+  const unpriced = unpricedLegIds(estimate);
+  const unacknowledged = unpriced.filter((ideaId) => !acknowledged.has(ideaId));
+  if (unacknowledged.length > 0) {
+    throw new UnpricedConsentError(candidateId, unpriced, unacknowledged);
+  }
   const estimatedOddsAmerican = estimate.ok ? estimate.americanOdds : null;
   const estimatedPayoutCents = estimate.ok
     ? calculatePayoutCents(candidate.stakeCents, estimate.decimalOdds)

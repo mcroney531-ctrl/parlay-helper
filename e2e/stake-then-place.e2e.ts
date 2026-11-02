@@ -12,7 +12,7 @@ test("typing a new stake and tapping Mark Placed places the slip with that stake
     ideas: [idea("i1", "Puka Nacua")],
     slips: [{ id: "s1", name: "Sunday Core", sportsbook: "FanDuel", ideaIds: ["i1"], updatedAt: EARLIER }],
   });
-  await page.goto("/builder");
+  await page.goto("/slip");
 
   await page.getByLabel("Stake", { exact: true }).fill("7.50");
   // One tap: the field blurs (its save starts), then Mark Placed is pressed
@@ -37,7 +37,7 @@ test("worst case: Mark Placed and its confirm both land before the stake save fi
     ideas: [idea("i1", "Puka Nacua")],
     slips: [{ id: "s1", name: "Sunday Core", sportsbook: "FanDuel", ideaIds: ["i1"], updatedAt: EARLIER }],
   });
-  await page.goto("/builder");
+  await page.goto("/slip");
 
   const stake = page.getByLabel("Stake", { exact: true });
   await stake.fill("7.50");

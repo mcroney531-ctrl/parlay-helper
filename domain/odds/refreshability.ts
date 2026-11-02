@@ -43,6 +43,16 @@ export function describePriceBlockers(blockers: PriceBlocker[], slipSportsbook: 
   return parts.length > 0 ? parts.join(" ") : null;
 }
 
+/**
+ * What an idea still needs before its odds can be refreshed, said on the
+ * Ideas card, or null when nothing is missing. Adding it to a slip is never
+ * blocked by this (chunk 3 decision (b)); the card just names the gap.
+ */
+export function missingDetailsText(idea: CapturedIdea): string | null {
+  const missing = missingOddsRequestFields(idea);
+  return missing.length === 0 ? null : `Needs ${joinWords(missing.map((b) => MISSING_TEXT[b as Exclude<PriceBlocker, "unsupported_book">]))} to refresh odds`;
+}
+
 export function unsupportedBookText(sportsbook: string): string {
   return `Live odds aren't available for "${sportsbook.trim()}" (supported: ${SUPPORTED_BOOK_NAMES.join(", ")}).`;
 }
