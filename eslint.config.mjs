@@ -15,6 +15,8 @@ const eslintConfig = defineConfig([
     // Playwright output (HTML report, failure traces): generated, not source.
     "playwright-report/**",
     "test-results/**",
+    // The two-build upgrade check's builds (scripts/e2e-upgrade.mjs).
+    ".e2e-upgrade/**",
   ]),
 ]);
 

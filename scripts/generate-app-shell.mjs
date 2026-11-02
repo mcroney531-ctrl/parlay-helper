@@ -21,7 +21,7 @@ import path from "node:path";
 // (aliases) are redirects and never go through Cache.addAll.
 const ROUTE_CONFIG = JSON.parse(await readFile(path.resolve(process.cwd(), "config", "routes.json"), "utf8"));
 const ROUTES = ROUTE_CONFIG.canonical.map((r) => r.slice(1));
-const NEXT_DIR = path.resolve(process.cwd(), ".next");
+const NEXT_DIR = path.resolve(process.cwd(), process.env.PARLAY_DIST_DIR || ".next"); // see next.config.ts
 const MANIFEST_PATH = path.resolve(process.cwd(), "public", "precache-manifest.json");
 const SW_TEMPLATE_PATH = path.resolve(process.cwd(), "scripts", "sw-template.js");
 const SW_OUTPUT_PATH = path.resolve(process.cwd(), "public", "sw.js");

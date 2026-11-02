@@ -4,6 +4,14 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/FormControls";
 import { requireFullPageLoads } from "@/components/appNavigation";
 
+/**
+ * Which build this page's code came from, stamped on <html data-build> for
+ * diagnostics ("which version is this tab running?"). Inlined at build time
+ * from NEXT_PUBLIC_APP_BUILD, so builds with different labels ship different
+ * client code (the two-build upgrade check relies on that).
+ */
+const APP_BUILD = process.env.NEXT_PUBLIC_APP_BUILD || "local";
+
 export type UpdateState =
   /** Nothing to offer. */
   | { kind: "none" }
@@ -93,6 +101,10 @@ export function updatePromptText(state: UpdateState): string | null {
 export function ServiceWorkerRegistration() {
   const [state, setState] = useState<UpdateState>({ kind: "none" });
   const tracker = useRef<ReturnType<typeof trackServiceWorkerUpdates> | null>(null);
+
+  useEffect(() => {
+    document.documentElement.dataset.build = APP_BUILD;
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;

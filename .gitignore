@@ -24,6 +24,9 @@
 /public/sw.js
 /public/precache-manifest.json
 
+# the two-build upgrade check's builds (scripts/e2e-upgrade.mjs)
+/.e2e-upgrade/
+
 # production
 /build
 
