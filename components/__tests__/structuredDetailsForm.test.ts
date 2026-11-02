@@ -19,6 +19,7 @@ function makeValues(overrides: Partial<StructuredFormValues> = {}): StructuredFo
     sportsbookAtCapture: "",
     confidence: "unrated",
     note: "",
+    useCaptureForThisBet: false,
     ...overrides,
   };
 }

@@ -6,6 +6,7 @@ import {
 } from "@/storage/indexeddb/repositories/liveContextRepository";
 import { allocateRefreshAttempt } from "@/storage/indexeddb/repositories/metaRepository";
 import { changesPriceIdentity } from "@/domain/ideas/ideaService";
+import { captureIsEligible } from "@/domain/ideas/captureProposition";
 import { missingOddsRequestFields } from "./refreshability";
 
 export type OddsApiOutcome = {
@@ -149,7 +150,22 @@ export function matchOutcome(idea: CapturedIdea, outcomes: OddsApiOutcome[]): Od
  * or this leg couldn't be identified in it (no player name, player not in the
  * market, an ambiguous selection, or no line for a market that has lines).
  */
-export type LegMatch = { outcome: OddsApiOutcome } | { miss: "market_not_listed" | "line_not_offered" | "unidentified" };
+export type LegMatch =
+  | { outcome: OddsApiOutcome }
+  | { miss: "market_not_listed" | "unidentified" }
+  /** The market (and this player, for a prop) is listed, but not at the leg's line; offeredLines are the lines it shows. */
+  | { miss: "line_not_offered"; offeredLines: number[] };
+
+/**
+ * Whether a market key is one of the provider's alternate-line markets
+ * (player_reception_yds_alternate, alternate_totals, alternate_spreads), which
+ * list every rung a book offers. A MAIN market lists only the book's main line,
+ * so a leg's line missing from it says nothing about whether the book offers
+ * that line as an alternate (B's review of 74be340, R1).
+ */
+export function isAlternateMarketKey(marketKey: string | null): boolean {
+  return Boolean(marketKey && (marketKey.endsWith("_alternate") || marketKey.startsWith("alternate_")));
+}
 
 /**
  * EXACT LINE (Trevor/GPT 2026-11-02): in a market whose outcomes carry lines,
@@ -160,12 +176,13 @@ export type LegMatch = { outcome: OddsApiOutcome } | { miss: "market_not_listed"
  */
 export function matchLeg(idea: CapturedIdea, outcomes: OddsApiOutcome[]): LegMatch {
   const found = matchOutcomeAtLine(idea, outcomes);
-  if (found !== "line_not_offered" && found !== null) return { outcome: found };
+  if (found !== null && typeof found === "object" && "lines" in found) return { miss: "line_not_offered", offeredLines: found.lines };
+  if (found !== null) return { outcome: found as OddsApiOutcome };
   if (!outcomes.some((o) => o.marketKey === idea.marketKey)) return { miss: "market_not_listed" };
-  return { miss: found === "line_not_offered" ? "line_not_offered" : "unidentified" };
+  return { miss: "unidentified" };
 }
 
-function matchOutcomeAtLine(idea: CapturedIdea, outcomes: OddsApiOutcome[]): OddsApiOutcome | "line_not_offered" | null {
+function matchOutcomeAtLine(idea: CapturedIdea, outcomes: OddsApiOutcome[]): OddsApiOutcome | { lines: number[] } | null {
   const forMarket = outcomes.filter((o) => o.marketKey === idea.marketKey);
   if (forMarket.length === 0) return null;
 
@@ -181,25 +198,35 @@ function matchOutcomeAtLine(idea: CapturedIdea, outcomes: OddsApiOutcome[]): Odd
     // style markets where `name` IS the player). Require a name match
     // before falling back to selection/point.
     const byPlayerName = forMarket.filter((o) => normalizeName(o.name) === normalizeName(idea.playerName as string));
-    if (byPlayerName.length > 0) candidates = byPlayerName;
+    if (byPlayerName.length > 0) {
+      // Each outcome IS a player, so it is that player's "yes": a yes (or no
+      // selection) leg takes the one outcome, and a "no" leg is never given the
+      // yes price.
+      if (idea.selection && normalizeName(idea.selection) !== "yes") return null;
+      return byPlayerName.length === 1 ? byPlayerName[0] : null;
+    }
   }
 
   // A market with lines: only this leg's own line is this leg.
   if (candidates.some((o) => o.point !== null)) {
     if (idea.lineAtCapture === null) return null;
     const atLine = candidates.filter((o) => o.point === idea.lineAtCapture);
-    if (atLine.length === 0) return "line_not_offered";
+    if (atLine.length === 0) return { lines: [...new Set(candidates.map((o) => o.point).filter((p): p is number => p !== null))].sort((a, b) => a - b) };
     candidates = atLine;
   }
 
   if (idea.selection) {
     // Same normalization as changesPriceIdentity, so an edit it calls cosmetic can't change the match.
+    // Exactly one outcome must match the selection (B's review of 74be340, R2):
+    // none (e.g. an Under leg where only Over is listed) is never the other
+    // side, and two (the same Over at two prices) is never the first one.
     const selection = normalizeName(idea.selection);
-    const bySelection = candidates.find((o) => normalizeName(o.name) === selection);
-    if (bySelection) return bySelection;
+    const bySelection = candidates.filter((o) => normalizeName(o.name) === selection);
+    return bySelection.length === 1 ? bySelection[0] : null;
   }
-  // Only auto-pick a lone remaining candidate; multiple undifferentiated
-  // candidates left is exactly the ambiguity this function exists to avoid.
+  // No selection: only auto-pick a lone remaining candidate; multiple
+  // undifferentiated candidates left is exactly the ambiguity this function
+  // exists to avoid.
   return candidates.length === 1 ? candidates[0] : null;
 }
 
@@ -387,11 +414,18 @@ export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas:
       // no line) is a matcher limitation, not evidence of absence, so it stays
       // unknown (null).
       const miss = "miss" in match ? match.miss : null;
+      // A line missing from a MAIN market isn't evidence the book doesn't offer
+      // it (it may be an alternate rung, and alternate markets aren't fetched):
+      // unknown, with an honest note, so the labelled capture price still
+      // applies. Only an alternate market, which lists every rung, can show a
+      // line isn't offered (B's review of 74be340, R1; Trevor's minimal fix).
+      const lineUnchecked = miss === "line_not_offered" && !isAlternateMarketKey(idea.marketKey);
+      const shown = "offeredLines" in match ? match.offeredLines.join(" / ") : "";
       const written = await mergeLiveContext(idea, candidate.sportsbook, { ...attempt, observation: true }, {
         eventId: idea.eventId,
         currentLine: outcome?.point ?? null,
         currentOddsAmerican: outcome?.priceAmerican ?? null,
-        marketAvailable: outcome !== null ? true : miss === "unidentified" ? null : false,
+        marketAvailable: outcome !== null ? true : miss === "unidentified" || lineUnchecked ? null : false,
         oddsFetchedAt: result.fetchedAt,
         oddsSource: "odds-api",
         fetchedAt: result.fetchedAt,
@@ -400,7 +434,11 @@ export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas:
           outcome === null
             ? [
                 ...warnings,
-                miss === "line_not_offered"
+                lineUnchecked
+                  ? `Live price is only checked at the main line (${shown} here), not at ${idea.lineAtCapture}.${
+                      idea.oddsAtCaptureAmerican !== null && captureIsEligible(idea) ? " Using your captured price." : ""
+                    }`
+                  : miss === "line_not_offered"
                   ? `This sportsbook isn't offering this bet at ${idea.lineAtCapture} right now.`
                   : miss === "unidentified"
                     ? "Could not confirm which outcome belongs to this leg (player/selection/line unclear or ambiguous)."

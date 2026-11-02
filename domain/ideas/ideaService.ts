@@ -155,6 +155,8 @@ export function changesPriceIdentity(before: CapturedIdea, after: CapturedIdea):
 export async function updateIdeaDetails(
   id: string,
   patch: Partial<Omit<CapturedIdea, "id" | "rawText" | "createdAt">>,
+  /** restampCapture: the user chose to use the capture odds for the bet as now saved (the details sheet's "Use -110 for this bet"). */
+  { restampCapture = false }: { restampCapture?: boolean } = {},
 ): Promise<CapturedIdea> {
   // One transaction: the edited idea is saved and, if its price identity
   // changed, its cached live context is cleared, together or not at all. A
@@ -173,7 +175,7 @@ export async function updateIdeaDetails(
       updatedAt: nowISO(),
     };
     merged.detailsStatus = isStructuredEnough(merged) ? "structured" : "needs_details";
-    const captureProposition = stampedCaptureProposition(existing, merged);
+    const captureProposition = stampedCaptureProposition(existing, merged, { restamp: restampCapture });
     if (captureProposition === undefined) delete merged.captureProposition;
     else merged.captureProposition = captureProposition;
     return { idea: merged, clearLiveContext: changesPriceIdentity(existing, merged) };

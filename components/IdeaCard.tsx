@@ -10,7 +10,7 @@ import { Pill } from "@/components/StatusChip";
 import { Button, Select } from "@/components/FormControls";
 import { CheckIcon } from "@/components/icons";
 import { IdeaDetailsSheet } from "@/components/IdeaDetailsSheet";
-import { valuesToPatch, type StructuredFormValues } from "@/components/StructuredDetailsForm";
+import { saveOptionsFor, valuesToPatch, type StructuredFormValues } from "@/components/StructuredDetailsForm";
 import { archiveIdea, unarchiveIdea, updateIdeaDetails } from "@/domain/ideas/ideaService";
 import { addLegToCandidate } from "@/domain/candidates/candidateService";
 import { isPlaced } from "@/domain/candidates/candidateState";
@@ -57,13 +57,13 @@ export function IdeaCard({ idea, usage, targetSlip }: { idea: CapturedIdea; usag
   }
 
   async function saveDetails(values: StructuredFormValues) {
-    await updateIdeaDetails(idea.id, valuesToPatch(values));
+    await updateIdeaDetails(idea.id, valuesToPatch(values), saveOptionsFor(values));
     await Promise.all([refreshIdeas(), refreshLiveContext()]);
     setEditing(false);
   }
 
   async function saveDetailsAndAddToSlip(values: StructuredFormValues) {
-    await updateIdeaDetails(idea.id, valuesToPatch(values));
+    await updateIdeaDetails(idea.id, valuesToPatch(values), saveOptionsFor(values));
     await Promise.all([refreshIdeas(), refreshLiveContext()]);
     if (targetSlipId) await addLegToCandidate(targetSlipId, idea.id);
     await refreshCandidates();

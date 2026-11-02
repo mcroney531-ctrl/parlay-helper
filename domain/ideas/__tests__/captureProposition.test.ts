@@ -85,6 +85,39 @@ describe("which bet a capture price belongs to", () => {
     expect(priceOf(reentered)).toMatchObject({ source: "capture", oddsAmerican: 120 });
   });
 
+  it("a line added after capture becomes part of the bet: changing it later is a different bet (R3)", async () => {
+    const idea = await captureStructuredIdea("Puka over", { ...recYdsOver635, lineAtCapture: null });
+    const withLine = await updateIdeaDetails(idea.id, { lineAtCapture: 63.5 });
+    expect(captureIsEligible(withLine)).toBe(true);
+    expect(withLine.captureProposition?.lineAtCapture).toBe(63.5);
+    expect(captureIsEligible(await updateIdeaDetails(idea.id, { lineAtCapture: 79.5 }))).toBe(false);
+  });
+
+  it("a game picked after capture becomes part of the bet: a different game later is a different bet (R3)", async () => {
+    const idea = await captureStructuredIdea("Puka O63.5", recYdsOver635); // no game
+    expect(captureIsEligible(await updateIdeaDetails(idea.id, { eventId: "evt-9" }))).toBe(true);
+    expect(captureIsEligible(await updateIdeaDetails(idea.id, { eventId: "evt-10" }))).toBe(false);
+  });
+
+  it("changing only the capture BOOK never makes a capture for another bet usable again (R4)", async () => {
+    const idea = await captureStructuredIdea("Puka O63.5", recYdsOver635);
+    expect(captureIsEligible(await updateIdeaDetails(idea.id, { marketKey: "player_anytime_td", selection: "Yes", lineAtCapture: null }))).toBe(false);
+    const rebooked = await updateIdeaDetails(idea.id, { sportsbookAtCapture: "DraftKings" });
+    expect(rebooked.sportsbookAtCapture).toBe("DraftKings");
+    expect(captureIsEligible(rebooked)).toBe(false);
+  });
+
+  it("choosing to use the same odds for the new bet (the sheet's action) makes them its price", async () => {
+    const idea = await captureStructuredIdea("Puka O63.5", recYdsOver635);
+    await updateIdeaDetails(idea.id, { marketKey: "player_anytime_td", selection: "Yes", lineAtCapture: null });
+    // Saving the same number again isn't a choice to use it...
+    expect(captureIsEligible(await updateIdeaDetails(idea.id, { oddsAtCaptureAmerican: -110 }))).toBe(false);
+    // ...the explicit action is.
+    const used = await updateIdeaDetails(idea.id, { oddsAtCaptureAmerican: -110 }, { restampCapture: true });
+    expect(used.captureProposition).toMatchObject({ marketKey: "player_anytime_td", lineAtCapture: null });
+    expect(priceOf(used)).toMatchObject({ source: "capture", oddsAmerican: -110 });
+  });
+
   it("clearing the capture odds clears the record of its bet", async () => {
     const idea = await captureStructuredIdea("Puka O63.5", recYdsOver635);
     expect((await updateIdeaDetails(idea.id, { oddsAtCaptureAmerican: null })).captureProposition).toBeNull();
@@ -110,9 +143,13 @@ describe("the details sheet's note under Odds at capture", () => {
     expect(captureNoteFor(idea, values)).toBeNull();
 
     const anytimeTd = { ...values, marketKey: "player_anytime_td", selection: "yes", lineAtCapture: "" };
-    expect(captureNoteFor(idea, anytimeTd)).toBe(
-      "Captured -110 was for Receiving Yards Over 63.5, so it isn't used as a price for this bet. Enter odds for this bet to use them.",
-    );
+    expect(captureNoteFor(idea, anytimeTd)).toEqual({
+      text: "Captured -110 was for Receiving Yards Over 63.5, so it isn't used as a price for this bet.",
+      odds: "-110",
+    });
     expect(captureNoteFor(idea, { ...anytimeTd, oddsAtCaptureAmerican: "140" })).toBeNull();
+    expect(captureNoteFor(idea, { ...anytimeTd, useCaptureForThisBet: true })).toBeNull();
+    // A book-only change doesn't make the note go away (R4).
+    expect(captureNoteFor(idea, { ...anytimeTd, sportsbookAtCapture: "DraftKings" })).not.toBeNull();
   });
 });

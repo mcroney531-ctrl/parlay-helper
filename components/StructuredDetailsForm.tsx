@@ -20,7 +20,18 @@ export type StructuredFormValues = {
   sportsbookAtCapture: string;
   confidence: Confidence;
   note: string;
+  /**
+   * The user chose to use the stored capture odds as the price of the bet as
+   * it will be saved ("Use -110 for this bet" in the details sheet). Not an
+   * idea field: it tells the save to re-stamp which bet the odds belong to.
+   */
+  useCaptureForThisBet: boolean;
 };
+
+/** The save options a form asks for, alongside valuesToPatch. */
+export function saveOptionsFor(values: StructuredFormValues): { restampCapture: boolean } {
+  return { restampCapture: values.useCaptureForThisBet };
+}
 
 export function valuesFromIdea(idea: CapturedIdea): StructuredFormValues {
   return {
@@ -40,6 +51,7 @@ export function valuesFromIdea(idea: CapturedIdea): StructuredFormValues {
     sportsbookAtCapture: idea.sportsbookAtCapture ?? "",
     confidence: idea.confidence,
     note: idea.note,
+    useCaptureForThisBet: false,
   };
 }
 

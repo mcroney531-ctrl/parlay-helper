@@ -60,10 +60,23 @@ test("switching to a market with no line clears the line, and the old capture pr
   await page.goto("/slip");
   await expect(page.getByText("No price · the captured price was for a different bet")).toBeVisible();
 
-  // Odds entered for the new bet are its price.
+  // Re-saving doesn't change that; choosing "Use -110 for this bet" does.
   await page.goto("/ideas");
   await card(page, "Puka Nacua").getByRole("button", { name: "Edit details" }).click();
   await sheet.getByText("More details (team, odds, confidence, note)").click();
+  await sheet.getByRole("button", { name: "Use -110 for this bet" }).click();
+  await expect(sheet.getByText(/^Captured .* was for/)).toHaveCount(0);
+  await expect(sheet.getByText("-110 will be used as this bet’s captured price when you save.")).toBeVisible();
+  await sheet.getByRole("button", { name: /^Save/ }).click();
+  await page.goto("/slip");
+  await expect(page.getByText("Price -110 · captured, book not recorded (no live price)")).toBeVisible();
+
+  // Odds entered for a bet are its price too.
+  await page.goto("/ideas");
+  await card(page, "Puka Nacua").getByRole("button", { name: "Edit details" }).click();
+  await sheet.getByLabel("Market").selectOption({ label: "First TD Scorer" });
+  await sheet.getByText("More details (team, odds, confidence, note)").click();
+  await expect(sheet.getByRole("button", { name: "Use -110 for this bet" })).toBeVisible();
   await sheet.getByLabel("Odds at capture (American)").fill("140");
   await expect(sheet.getByText(/^Captured .* was for/)).toHaveCount(0);
   await sheet.getByRole("button", { name: /^Save/ }).click();

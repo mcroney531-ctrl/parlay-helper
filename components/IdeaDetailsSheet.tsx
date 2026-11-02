@@ -46,13 +46,16 @@ export function teamFieldsForPickedEvent(
 /**
  * Said under "Odds at capture" when the bet in the form is no longer the one
  * the stored capture price was entered for (chunk 4a): the price is kept, but
- * not used. Entering or changing the capture price makes it this bet's again.
+ * not used. New odds, or "Use -110 for this bet" (useCaptureForThisBet), make
+ * it this bet's price when saved.
  */
-export function captureNoteFor(idea: CapturedIdea, values: StructuredFormValues): string | null {
+export function captureNoteFor(idea: CapturedIdea, values: StructuredFormValues): { text: string; odds: string } | null {
+  if (values.useCaptureForThisBet) return null;
   const merged = { ...idea, ...valuesToPatch(values) } as CapturedIdea;
   const stamp = stampedCaptureProposition(idea, merged);
   if (!stamp || captureIsEligible({ ...merged, captureProposition: stamp })) return null;
-  return `Captured ${formatAmerican(merged.oddsAtCaptureAmerican as number)} was for ${describeBet(stamp)}, so it isn't used as a price for this bet. Enter odds for this bet to use them.`;
+  const odds = formatAmerican(merged.oddsAtCaptureAmerican as number);
+  return { text: `Captured ${odds} was for ${describeBet(stamp)}, so it isn't used as a price for this bet.`, odds };
 }
 
 function describeBet(bet: CaptureProposition): string {
@@ -272,8 +275,16 @@ export function IdeaDetailsSheet({
                 <TextInput type="number" value={values.oddsAtCaptureAmerican} onChange={(e) => set("oddsAtCaptureAmerican", e.target.value)} placeholder="-110" />
               </Field>
               {captureNote && (
-                <p role="status" className="-mt-2 text-xs" style={{ color: "var(--color-caution-fg)" }}>
-                  {captureNote}
+                <div role="status" className="-mt-2 flex flex-col items-start gap-1 text-xs" style={{ color: "var(--color-caution-fg)" }}>
+                  <p>{captureNote.text}</p>
+                  <Button variant="text" className="text-xs" onClick={() => set("useCaptureForThisBet", true)}>
+                    Use {captureNote.odds} for this bet
+                  </Button>
+                </div>
+              )}
+              {values.useCaptureForThisBet && (
+                <p role="status" className="-mt-2 text-xs" style={{ color: "var(--color-muted)" }}>
+                  {values.oddsAtCaptureAmerican} will be used as this bet&rsquo;s captured price when you save.
                 </p>
               )}
               <Field label="Sportsbook at capture">

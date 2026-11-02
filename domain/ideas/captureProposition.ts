@@ -71,19 +71,26 @@ export function capturedForOtherBet(idea: CapturedIdea): CaptureProposition | nu
 /**
  * What captureProposition to store when `existing` is saved as `merged`:
  * - no capture price any more: none;
- * - the capture price or its book was entered or changed: the bet as now saved;
+ * - the capture ODDS were entered or changed, or the user chose to use them
+ *   for this bet (restamp): the bet as now saved. A change of the capture
+ *   BOOK alone says nothing about which bet the odds were for, so it never
+ *   re-stamps (B's review of 74be340, R4);
  * - an idea from before the field, whose bet this edit changes: the bet it had;
- * - otherwise unchanged.
+ * - a stamp that still matches the bet: the bet as now saved, so blanks filled
+ *   in since are part of it and a later change to them is caught (R3: a line
+ *   added after capture and then changed is a different bet);
+ * - a stamp that no longer matches: unchanged (it stays ineligible).
  */
-export function stampedCaptureProposition(existing: CapturedIdea | null, merged: CapturedIdea): CaptureProposition | null | undefined {
+export function stampedCaptureProposition(
+  existing: CapturedIdea | null,
+  merged: CapturedIdea,
+  { restamp = false }: { restamp?: boolean } = {},
+): CaptureProposition | null | undefined {
   if (merged.oddsAtCaptureAmerican === null) return null;
-  const captureChanged =
-    !existing ||
-    existing.oddsAtCaptureAmerican !== merged.oddsAtCaptureAmerican ||
-    (existing.sportsbookAtCapture ?? null) !== (merged.sportsbookAtCapture ?? null);
-  if (captureChanged) return propositionOf(merged);
+  if (restamp || !existing || existing.oddsAtCaptureAmerican !== merged.oddsAtCaptureAmerican) return propositionOf(merged);
   if (existing.captureProposition === undefined) {
     return differs(propositionOf(existing), merged) ? propositionOf(existing) : undefined;
   }
-  return existing.captureProposition;
+  if (existing.captureProposition === null) return propositionOf(merged);
+  return differs(existing.captureProposition, merged) ? existing.captureProposition : propositionOf(merged);
 }

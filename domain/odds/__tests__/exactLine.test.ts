@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { IDBFactory } from "fake-indexeddb";
 import { matchLeg, matchOutcome, refreshOddsForCandidate, type OddsApiOutcome } from "../refreshService";
-import { resolveLegPrice } from "../estimate";
+import { legPriceInputs, resolveLegPrice } from "../estimate";
+import { buildChangeRadar } from "../changeRadar";
 import { describeLegPrice } from "../priceSource";
 import { __setDBForTests } from "@/storage/indexeddb/db";
 import { putIdea } from "@/storage/indexeddb/repositories/ideasRepository";
@@ -55,10 +56,25 @@ const puka = (point: number, name = "Over", priceAmerican = -110, marketKey = "p
 });
 
 describe("matchLeg: only the leg's own line is the leg", () => {
-  it("a book that moved its line isn't offering this bet; its new main line is never taken", () => {
+  it("a main line other than the leg's is never taken; the miss says which lines were shown", () => {
     const outcomes = [puka(65.5, "Over", -115), puka(65.5, "Under", -105)];
-    expect(matchLeg(makeIdea(), outcomes)).toEqual({ miss: "line_not_offered" });
+    expect(matchLeg(makeIdea(), outcomes)).toEqual({ miss: "line_not_offered", offeredLines: [65.5] });
     expect(matchOutcome(makeIdea(), outcomes)).toBeNull();
+  });
+
+  it("never takes the other side: an Under leg where only Over is listed at its line is unidentified (R2)", () => {
+    expect(matchLeg(makeIdea({ selection: "Under" }), [puka(63.5, "Over", -110)])).toEqual({ miss: "unidentified" });
+  });
+
+  it("never takes the first of two outcomes for the same side and line (R2)", () => {
+    expect(matchLeg(makeIdea(), [puka(63.5, "Over", -110), puka(63.5, "Over", -125)])).toEqual({ miss: "unidentified" });
+  });
+
+  it("in a market where each outcome IS a player (anytime TD), a 'no' leg never gets the player's yes price", () => {
+    const td: OddsApiOutcome = { marketKey: "player_anytime_td", name: "Puka Nacua", description: null, point: null, priceAmerican: 140 };
+    const tdIdea = (selection: string) => makeIdea({ marketKey: "player_anytime_td", selection, lineAtCapture: null });
+    expect(matchOutcome(tdIdea("yes"), [td])).toEqual(td);
+    expect(matchLeg(tdIdea("no"), [td])).toEqual({ miss: "unidentified" });
   });
 
   it("among several lines (an alternate-line market), takes the exact one, not the first with the selection", () => {
@@ -81,36 +97,47 @@ describe("matchLeg: only the leg's own line is the leg", () => {
   });
 });
 
-describe("refresh at a line the book no longer offers", () => {
-  it("stores the bet as not offered, with no price, and says which line", async () => {
-    const idea = makeIdea();
-    await putIdea(idea);
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string) => {
-        if (!url.startsWith("/api/odds")) return new Response(JSON.stringify({ fetchedAt: new Date().toISOString(), players: {} }));
-        return new Response(
-          JSON.stringify({
-            results: [
-              {
-                eventId: "evt-1",
-                ideaIds: [idea.id],
-                status: "ok",
-                fetchedAt: new Date().toISOString(),
-                warning: null,
-                outcomes: [puka(65.5, "Over", -115), puka(65.5, "Under", -105)],
-              },
-            ],
-          }),
-        );
-      }),
-    );
-    await refreshOddsForCandidate({ id: "slip-1", name: "Sunday", sportsbook: "FanDuel", ideaIds: [idea.id] } as unknown as CandidateParlay, [idea]);
+/** Refreshes one idea against a stubbed /api/odds that returns `outcomes` for its event; resolves to the stored row. */
+async function refreshAgainst(idea: CapturedIdea, outcomes: OddsApiOutcome[]) {
+  await putIdea(idea);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) => {
+      if (!url.startsWith("/api/odds")) return new Response(JSON.stringify({ fetchedAt: new Date().toISOString(), players: {} }));
+      return new Response(
+        JSON.stringify({ results: [{ eventId: "evt-1", ideaIds: [idea.id], status: "ok", fetchedAt: new Date().toISOString(), warning: null, outcomes }] }),
+      );
+    }),
+  );
+  await refreshOddsForCandidate({ id: "slip-1", name: "Sunday", sportsbook: "FanDuel", ideaIds: [idea.id] } as unknown as CandidateParlay, [idea]);
+  const [row] = await getAllLiveContext();
+  return row;
+}
 
-    const [row] = await getAllLiveContext();
+describe("refresh when the leg's line isn't in the response (R1, Trevor's minimal fix)", () => {
+  it("a MAIN market only shows the main line: unknown, not 'not offered', so the labelled capture price still applies", async () => {
+    const idea = makeIdea({ oddsAtCaptureAmerican: -110, sportsbookAtCapture: "FanDuel" });
+    const row = await refreshAgainst(idea, [puka(65.5, "Over", -115), puka(65.5, "Under", -105)]);
+
+    expect(row.marketAvailable).toBeNull();
+    expect(row.currentOddsAmerican).toBeNull();
+    expect(row.warnings).toContain("Live price is only checked at the main line (65.5 here), not at 63.5. Using your captured price.");
+    const resolved = resolveLegPrice(legPriceInputs([idea], "FanDuel", () => row)[0]);
+    expect(resolved).toMatchObject({ source: "capture", oddsAmerican: -110 });
+    // And the radar doesn't say the market wasn't found.
+    expect(buildChangeRadar(idea, row).some((e) => e.kind === "not_found" || /not currently offered/i.test(e.text))).toBe(false);
+  });
+
+  it("with no capture price, the note doesn't promise one", async () => {
+    const row = await refreshAgainst(makeIdea(), [puka(65.5, "Over", -115)]);
+    expect(row.warnings).toContain("Live price is only checked at the main line (65.5 here), not at 63.5.");
+  });
+
+  it("an ALTERNATE market lists every rung, so a line missing from it IS not offered", async () => {
+    const alt = "player_reception_yds_alternate";
+    const row = await refreshAgainst(makeIdea({ marketKey: alt }), [puka(59.5, "Over", -180, alt), puka(65.5, "Over", -115, alt)]);
     expect(row.marketAvailable).toBe(false);
     expect(row.currentOddsAmerican).toBeNull();
-    expect(row.currentLine).toBeNull();
     expect(row.warnings).toContain("This sportsbook isn't offering this bet at 63.5 right now.");
   });
 });
