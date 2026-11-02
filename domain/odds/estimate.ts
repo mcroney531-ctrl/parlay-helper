@@ -1,6 +1,7 @@
 import { americanToDecimal, decimalToAmerican, roundAmerican } from "./conversion";
 import { compareSportsbooks, type SportsbookMatch } from "@/domain/sportsbook";
 import type { CapturedIdea, LiveContext, SnapshotLegPrice } from "@/domain/types";
+import { captureIsEligible } from "@/domain/ideas/captureProposition";
 import { missingLegIds, presentIdeas, type SlipLeg } from "@/domain/candidates/slipLegs";
 
 // The canonical resolver (INV-12): every place that needs "the price of this
@@ -18,9 +19,16 @@ export type LegPriceInput = {
   currentLine?: number | null;
   /** When the live price was fetched (live context's oddsFetchedAt). Missing means unknown. */
   currentOddsFetchedAt?: string | null;
+  /** The capture price, or null when there is none or it was entered for a different bet (captureForOtherBet). */
   captureOddsAmerican: number | null;
-  /** The line the capture price is for (the idea's lineAtCapture). Missing means none. */
+  /**
+   * The leg's own line (the idea's lineAtCapture): the line it was captured at
+   * and the only line it is ever priced at (exact-line rule, chunk 4a).
+   * Missing means none.
+   */
   captureLine?: number | null;
+  /** The idea has a capture price, but it was entered for a different bet, so it isn't one (chunk 4a). */
+  captureForOtherBet?: boolean;
   /** Where captureOddsAmerican was observed (the idea's sportsbookAtCapture). Missing or blank means unknown. */
   captureSportsbook?: string | null;
   /** The sportsbook of the slip this estimate is for. Missing or blank means unknown. */
@@ -43,8 +51,14 @@ export type ResolvedLegPrice = {
   line: number | null;
   /** Only when source is "current": when that live price was fetched (null if unknown). */
   oddsFetchedAt?: string | null;
-  /** Only when source is "unavailable" because the slip's book no longer offers the market. */
-  unavailableReason?: "market_not_offered";
+  /**
+   * Only when source is "unavailable": the slip's book isn't offering this bet
+   * (its market, or this leg's line in it), or the only price is a capture
+   * price entered for a different bet.
+   */
+  unavailableReason?: "market_not_offered" | "capture_for_other_bet";
+  /** With market_not_offered: the leg's line, to say which line isn't offered (null for a market with no line). */
+  notOfferedLine?: number | null;
   /** With unavailableReason: the last stored live price, for display only. Never used in an estimate or a snapshot. */
   lastKnownOddsAmerican?: number | null;
   /**
@@ -60,9 +74,10 @@ export type ResolvedLegPrice = {
  * substitutes: the result always names its source so the UI can say
  * "using capture price" or "cannot be calculated" instead of quietly
  * blending values. A capture price also names the book it came from and
- * whether that is the slip's book; it is still used either way (whether
- * other-book capture prices should count toward the estimate is an open
- * product question), but it is never presented as the slip book's price.
+ * whether that is the slip's book. Policy (Trevor/GPT 2026-11-02): a capture
+ * price from another or unknown book is KEPT and LABELLED, a fallback the
+ * slip book's live price always outranks, and never presented as the slip
+ * book's price.
  */
 export function resolveLegPrice(leg: LegPriceInput): ResolvedLegPrice {
   // A market the slip's book no longer offers has no price to bet at that book.
@@ -76,10 +91,16 @@ export function resolveLegPrice(leg: LegPriceInput): ResolvedLegPrice {
       source: "unavailable",
       line: null,
       unavailableReason: "market_not_offered",
+      notOfferedLine: leg.captureLine ?? null,
       lastKnownOddsAmerican: leg.currentOddsAmerican,
     };
   }
-  if (leg.currentOddsAmerican !== null) {
+  // EXACT LINE (Trevor/GPT 2026-11-02): the line is part of the bet. A live
+  // price stored for another line (written before the matcher required the
+  // leg's own line, or for a leg with no line in a line market) is not this
+  // leg's price, and the main line is never substituted.
+  const liveIsThisLine = leg.currentLine == null || leg.currentLine === (leg.captureLine ?? null);
+  if (leg.currentOddsAmerican !== null && liveIsThisLine) {
     return {
       ideaId: leg.ideaId,
       eventId: leg.eventId,
@@ -101,6 +122,9 @@ export function resolveLegPrice(leg: LegPriceInput): ResolvedLegPrice {
         match: compareSportsbooks(leg.captureSportsbook, leg.slipSportsbook),
       },
     };
+  }
+  if (leg.captureForOtherBet) {
+    return { ideaId: leg.ideaId, eventId: leg.eventId, oddsAmerican: null, source: "unavailable", line: null, unavailableReason: "capture_for_other_bet" };
   }
   return { ideaId: leg.ideaId, eventId: leg.eventId, oddsAmerican: null, source: "unavailable", line: null };
 }
@@ -157,8 +181,9 @@ export function legPriceInputs(
       currentOddsAmerican: live?.currentOddsAmerican ?? null,
       currentLine: live?.currentLine ?? null,
       currentOddsFetchedAt: live?.oddsFetchedAt ?? null,
-      captureOddsAmerican: leg.oddsAtCaptureAmerican,
+      captureOddsAmerican: captureIsEligible(leg) ? leg.oddsAtCaptureAmerican : null,
       captureLine: leg.lineAtCapture,
+      captureForOtherBet: !captureIsEligible(leg),
       captureSportsbook: leg.sportsbookAtCapture,
       slipSportsbook,
       marketAvailable: live?.marketAvailable ?? null,

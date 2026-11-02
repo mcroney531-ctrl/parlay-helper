@@ -124,6 +124,7 @@ describe("legPriceInputs", () => {
         captureOddsAmerican: -110,
         captureLine: 63.5,
         captureSportsbook: "FanDuel",
+        captureForOtherBet: false,
         slipSportsbook: "DraftKings",
         marketAvailable: true,
       },
@@ -136,6 +137,7 @@ describe("legPriceInputs", () => {
         captureOddsAmerican: 150,
         captureLine: null,
         captureSportsbook: null,
+        captureForOtherBet: false,
         slipSportsbook: "DraftKings",
         marketAvailable: null,
       },
@@ -154,7 +156,7 @@ describe("resolveLegPrice carries what a saved leg records (INV-12)", () => {
         currentLine: 64.5,
         currentOddsFetchedAt: "2026-09-26T12:00:00.000Z",
         captureOddsAmerican: -110,
-        captureLine: 63.5,
+        captureLine: 64.5, // a live price counts only at the leg's own line
       }),
     ).toStrictEqual({
       ideaId: "a",
@@ -190,7 +192,7 @@ describe("snapshotLegPrice", () => {
   const base = { ideaId: "a", eventId: "evt-a", slipSportsbook: "DraftKings" };
 
   it("records a live price as the slip's book, with its line and age", () => {
-    const resolved = resolveLegPrice({ ...base, currentOddsAmerican: -120, currentLine: 64.5, currentOddsFetchedAt: "t1", captureOddsAmerican: null });
+    const resolved = resolveLegPrice({ ...base, currentOddsAmerican: -120, currentLine: 64.5, captureLine: 64.5, currentOddsFetchedAt: "t1", captureOddsAmerican: null });
     expect(snapshotLegPrice(resolved, "DraftKings")).toStrictEqual({
       source: "current",
       oddsAmerican: -120,

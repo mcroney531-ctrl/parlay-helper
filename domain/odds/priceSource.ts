@@ -35,8 +35,15 @@ export function describeLegPrice(resolved: ResolvedLegPrice, slipSportsbook: str
       return { text: `Price ${odds} · captured, book not recorded (no live price)`, tone: "caution" };
     }
     case "unavailable":
-      return resolved.unavailableReason === "market_not_offered"
-        ? { text: `No price · ${slipBook} isn't offering this market`, tone: "missing" }
-        : { text: "No price · no live or capture price", tone: "missing" };
+      if (resolved.unavailableReason === "market_not_offered") {
+        // The line is part of the bet: a leg with a line is unavailable at THAT line.
+        return resolved.notOfferedLine != null
+          ? { text: `No price · ${slipBook} isn't offering this bet at ${resolved.notOfferedLine}`, tone: "missing" }
+          : { text: `No price · ${slipBook} isn't offering this market`, tone: "missing" };
+      }
+      if (resolved.unavailableReason === "capture_for_other_bet") {
+        return { text: "No price · the captured price was for a different bet", tone: "missing" };
+      }
+      return { text: "No price · no live or capture price", tone: "missing" };
   }
 }

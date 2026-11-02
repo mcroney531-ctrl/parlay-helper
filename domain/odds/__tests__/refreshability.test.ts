@@ -31,8 +31,15 @@ function makeIdea(overrides: Partial<CapturedIdea> = {}): CapturedIdea {
 }
 
 describe("missingOddsRequestFields", () => {
-  it("is empty when league, game and market are all set, whatever else is missing", () => {
-    expect(missingOddsRequestFields(makeIdea({ selection: null, playerName: null, lineAtCapture: null }))).toEqual([]);
+  it("is empty when league, game and market are all set, whatever else is missing, for a market with no line", () => {
+    expect(missingOddsRequestFields(makeIdea({ marketKey: "player_anytime_td", selection: null, playerName: null, lineAtCapture: null }))).toEqual([]);
+    expect(missingOddsRequestFields(makeIdea({ selection: null, playerName: null }))).toEqual([]);
+  });
+
+  it("needs the line for a known market that has lines (the line is part of the bet), not for a custom market key", () => {
+    expect(missingOddsRequestFields(makeIdea({ lineAtCapture: null }))).toEqual(["no_line"]);
+    expect(missingOddsRequestFields(makeIdea({ marketKey: "player_reception_yds_alternate", lineAtCapture: null }))).toEqual([]);
+    expect(describePriceBlockers(["no_line"], "FanDuel")).toBe("No live price until this idea has a line set in its details.");
   });
 
   it("names each missing request field, treating an empty string as missing", () => {

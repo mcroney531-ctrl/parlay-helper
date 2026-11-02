@@ -32,7 +32,7 @@ function idea(id: string, o: Partial<CapturedIdea> = {}): CapturedIdea {
 
 function live(ideaId: string, o: Partial<LiveContext> = {}): LiveContext {
   return {
-    ideaId, sportsbook: "DraftKings", eventId: "evt-1", currentLine: 64.5, currentOddsAmerican: -120, marketAvailable: true,
+    ideaId, sportsbook: "DraftKings", eventId: "evt-1", currentLine: 60.5, currentOddsAmerican: -120, marketAvailable: true,
     playerStatus: null, depthChartPosition: null, gameStatus: null, scheduledStart: null, fetchedAt: T, source: "odds-api",
     warnings: [], oddsFetchedAt: T, oddsSource: "odds-api", playerStatusFetchedAt: null, playerStatusSource: null, ...o,
   };
@@ -97,12 +97,12 @@ describe("Slip page", () => {
     const out = text(html);
 
     expect(out).toContain("Price +130 · live at DraftKings");
-    expect(out).toContain("No price · DraftKings isn't offering this market");
+    expect(out).toContain("No price · DraftKings isn't offering this bet at 60.5");
     expect(out).toContain("Price +105 · captured at FanDuel, a different book from DraftKings (no live price)");
     expect(out).toContain("No price · no live or capture price");
     expect(out).toContain("2 of 4 legs have no price");
     expect(out).toContain(
-      "Estimate cannot be calculated — 2 legs have no price at DraftKings. For 1 of them, DraftKings isn't offering the market, so no captured price is used.",
+      "Estimate cannot be calculated — 2 legs have no price at DraftKings. For 1 of them, DraftKings isn't offering the bet, so no captured price is used.",
     );
     // The pulled leg has a capture price; nothing on screen may say it doesn't.
     expect(out).not.toContain("no capture or current price");
@@ -135,10 +135,10 @@ describe("missingPriceMessage", () => {
 
   it("says a not-offered market's captured price isn't used, without claiming there is none", () => {
     expect(missingPriceMessage(unavailable(["a"], ["a"]), "FanDuel")).toBe(
-      "Estimate cannot be calculated — 1 leg has no price at FanDuel. FanDuel isn't offering its market, so no captured price is used.",
+      "Estimate cannot be calculated — 1 leg has no price at FanDuel. FanDuel isn't offering that bet, so no captured price is used.",
     );
     expect(missingPriceMessage(unavailable(["a", "b"], ["a", "b"]), "FanDuel")).toBe(
-      "Estimate cannot be calculated — 2 legs have no price at FanDuel. FanDuel isn't offering their markets, so no captured price is used.",
+      "Estimate cannot be calculated — 2 legs have no price at FanDuel. FanDuel isn't offering those bets, so no captured price is used.",
     );
   });
 });

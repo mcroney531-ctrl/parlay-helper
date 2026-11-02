@@ -7,6 +7,7 @@ import {
   updateIdeaWithLiveContext,
 } from "@/storage/indexeddb/repositories/ideasRepository";
 import { parseRawText } from "./parseRawText";
+import { propositionOf, stampedCaptureProposition } from "./captureProposition";
 
 function newId(): string {
   return crypto.randomUUID();
@@ -103,6 +104,8 @@ export async function captureStructuredIdea(
     updatedAt: timestamp,
     archivedAt: null,
   };
+  // The capture price, if any, is for the bet as captured.
+  if (idea.oddsAtCaptureAmerican !== null) idea.captureProposition = propositionOf(idea);
   await putIdea(idea);
   return idea;
 }
@@ -170,6 +173,9 @@ export async function updateIdeaDetails(
       updatedAt: nowISO(),
     };
     merged.detailsStatus = isStructuredEnough(merged) ? "structured" : "needs_details";
+    const captureProposition = stampedCaptureProposition(existing, merged);
+    if (captureProposition === undefined) delete merged.captureProposition;
+    else merged.captureProposition = captureProposition;
     return { idea: merged, clearLiveContext: changesPriceIdentity(existing, merged) };
   });
 }

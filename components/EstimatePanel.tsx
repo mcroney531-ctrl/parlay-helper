@@ -12,8 +12,9 @@ function formatCents(cents: number): string {
 
 /**
  * Why there's no estimate when legs have no price at the slip's book. A leg
- * whose market the book isn't offering may still have a capture price; it's
- * deliberately not used, so this never says the leg has no capture price.
+ * whose bet the book isn't offering (its market, or its line: the line is
+ * part of the bet) may still have a capture price; it's deliberately not
+ * used, so this never says the leg has no capture price.
  */
 export function missingPriceMessage(estimate: SlipEstimate, slipSportsbook: string): string {
   if (estimate.ok || estimate.reason !== "missing_price") return "";
@@ -23,9 +24,9 @@ export function missingPriceMessage(estimate: SlipEstimate, slipSportsbook: stri
   const notOffered = estimate.legSources.filter((l) => l.unavailableReason === "market_not_offered").length;
   if (notOffered === 0) return head;
   if (notOffered === n) {
-    return `${head} ${book} isn't offering ${n === 1 ? "its market" : "their markets"}, so no captured price is used.`;
+    return `${head} ${book} isn't offering ${n === 1 ? "that bet" : "those bets"}, so no captured price is used.`;
   }
-  return `${head} For ${notOffered} of them, ${book} isn't offering the market, so no captured price is used.`;
+  return `${head} For ${notOffered} of them, ${book} isn't offering the bet, so no captured price is used.`;
 }
 
 export function EstimatePanel({

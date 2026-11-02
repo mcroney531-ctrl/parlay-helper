@@ -85,7 +85,7 @@ function fromSavedLegs(record: FinalizedParlay): number | null {
 
 describe("one price path (INV-12)", () => {
   it("each saved leg records its price and provenance: live at the slip's book, or capture with its book", async () => {
-    const liveLeg = await leg("Live Leg", { odds: -110, line: 63.5, book: "DraftKings" });
+    const liveLeg = await leg("Live Leg", { odds: -110, line: 64.5, book: "DraftKings" }); // the live fixture's line
     const otherBook = await leg("Other Book", { odds: 150, line: 1.5, book: "FanDuel" });
     const sameBook = await leg("Same Book", { odds: -105, line: 40.5, book: "draft kings" });
     await putLiveContext(live(liveLeg.id));
@@ -104,7 +104,7 @@ describe("one price path (INV-12)", () => {
   });
 
   it("the saved estimate is exactly the saved legs' prices combined, and equals the builder's estimate", async () => {
-    const liveLeg = await leg("Live Leg", { odds: -110, line: 63.5, book: "DraftKings" });
+    const liveLeg = await leg("Live Leg", { odds: -110, line: 64.5, book: "DraftKings" }); // the live fixture's line
     const captureLeg = await leg("Capture Leg", { odds: 150, line: 1.5, book: "FanDuel" });
     await putLiveContext(live(liveLeg.id));
     const { slipId, seen } = await slipOf([liveLeg, captureLeg]);

@@ -59,7 +59,7 @@ async function liveOnlyLeg(label: string): Promise<CapturedIdea> {
     marketKey: "player_reception_yds",
     playerName: label,
     selection: "Over",
-    lineAtCapture: null,
+    lineAtCapture: 64.5, // the live fixture's line: a live price counts only at the leg's own line
     oddsAtCaptureAmerican: null,
     sportsbookAtCapture: null,
   });

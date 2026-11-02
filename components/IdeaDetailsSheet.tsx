@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { CapturedIdea, Confidence } from "@/domain/types";
+import type { CaptureProposition, CapturedIdea, Confidence } from "@/domain/types";
+import { captureIsEligible, stampedCaptureProposition } from "@/domain/ideas/captureProposition";
 import { CONFIDENCE_LEVELS } from "@/domain/types";
 import { SUPPORTED_LEAGUES, sportForLeague } from "@/integrations/odds-api/sportKeys";
 import { CUSTOM_MARKET_VALUE, MARKET_OPTIONS, marketLabelForKey } from "@/integrations/odds-api/marketKeys";
@@ -13,6 +14,7 @@ import {
   type StructuredFormValues,
   isEssentiallyComplete,
   valuesFromIdea,
+  valuesToPatch,
 } from "@/components/StructuredDetailsForm";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -39,6 +41,28 @@ export function teamFieldsForPickedEvent(
   if (team.trim() === event.homeTeam) return { opponent: event.awayTeam };
   if (team.trim() === event.awayTeam) return { opponent: event.homeTeam };
   return {};
+}
+
+/**
+ * Said under "Odds at capture" when the bet in the form is no longer the one
+ * the stored capture price was entered for (chunk 4a): the price is kept, but
+ * not used. Entering or changing the capture price makes it this bet's again.
+ */
+export function captureNoteFor(idea: CapturedIdea, values: StructuredFormValues): string | null {
+  const merged = { ...idea, ...valuesToPatch(values) } as CapturedIdea;
+  const stamp = stampedCaptureProposition(idea, merged);
+  if (!stamp || captureIsEligible({ ...merged, captureProposition: stamp })) return null;
+  return `Captured ${formatAmerican(merged.oddsAtCaptureAmerican as number)} was for ${describeBet(stamp)}, so it isn't used as a price for this bet. Enter odds for this bet to use them.`;
+}
+
+function describeBet(bet: CaptureProposition): string {
+  const market = marketLabelForKey(bet.marketKey) ?? bet.marketKey ?? "another market";
+  const selection = bet.selection ? bet.selection.charAt(0).toUpperCase() + bet.selection.slice(1) : null;
+  return [market, selection, bet.lineAtCapture].filter((part) => part !== null && part !== "").join(" ");
+}
+
+function formatAmerican(value: number): string {
+  return value > 0 ? `+${Math.round(value)}` : `${Math.round(value)}`;
 }
 
 export function IdeaDetailsSheet({
@@ -81,6 +105,11 @@ export function IdeaDetailsSheet({
     setCustomMarket(false);
     set("marketKey", selected);
     set("marketLabel", marketLabelForKey(selected) ?? "");
+    // A market with no line (e.g. Anytime TD) can't keep the old market's line:
+    // it would be saved hidden, and the line is part of the bet (chunk 4a). A
+    // capture price entered for the old bet stays stored but stops being used
+    // (see captureProposition.ts); the note under it says so.
+    if (MARKET_OPTIONS.some((m) => m.key === selected && !m.requiresLine)) set("lineAtCapture", "");
   }
 
   const selectedMarket = MARKET_OPTIONS.find((m) => m.key === values.marketKey);
@@ -114,6 +143,7 @@ export function IdeaDetailsSheet({
   }
 
   const canOfferAddToSlip = Boolean(offerAddToSlip && slipName && isEssentiallyComplete(values));
+  const captureNote = captureNoteFor(idea, values);
 
   return (
     <div
@@ -159,6 +189,19 @@ export function IdeaDetailsSheet({
                 </option>
               ))}
             </Select>
+          </Field>
+
+          {/* Out of "More details" (chunk 4a): a live price needs league, game and market, so none of them is tucked away. */}
+          <Field label="Game">
+            <EventPickerField
+              eventId={values.eventId}
+              league={values.league}
+              onChange={(id, meta) => {
+                set("eventId", id);
+                const filled = meta ? teamFieldsForPickedEvent(values.team, values.opponent, meta) : {};
+                if (filled.opponent !== undefined) set("opponent", filled.opponent);
+              }}
+            />
           </Field>
 
           <Field label="Player">
@@ -213,7 +256,7 @@ export function IdeaDetailsSheet({
 
           <details className="rounded-[var(--radius-control)] border" style={{ borderColor: "var(--color-border)" }}>
             <summary className="cursor-pointer px-3 py-2.5 text-sm font-semibold" style={{ color: "var(--color-muted)" }}>
-              More details (game, odds, confidence, note)
+              More details (team, odds, confidence, note)
             </summary>
             <div className="flex flex-col gap-4 border-t px-3 py-4" style={{ borderColor: "var(--color-border)" }}>
               <Field label="Team">
@@ -222,23 +265,17 @@ export function IdeaDetailsSheet({
               <Field label="Opponent">
                 <TextInput value={values.opponent} onChange={(e) => set("opponent", e.target.value)} />
               </Field>
-              <Field label="Game">
-                <EventPickerField
-                  eventId={values.eventId}
-                  league={values.league}
-                  onChange={(id, meta) => {
-                    set("eventId", id);
-                    const filled = meta ? teamFieldsForPickedEvent(values.team, values.opponent, meta) : {};
-                    if (filled.opponent !== undefined) set("opponent", filled.opponent);
-                  }}
-                />
-              </Field>
               <Field label="Slate / date">
                 <TextInput type="date" value={values.slateDate} onChange={(e) => set("slateDate", e.target.value)} />
               </Field>
               <Field label="Odds at capture (American)">
                 <TextInput type="number" value={values.oddsAtCaptureAmerican} onChange={(e) => set("oddsAtCaptureAmerican", e.target.value)} placeholder="-110" />
               </Field>
+              {captureNote && (
+                <p role="status" className="-mt-2 text-xs" style={{ color: "var(--color-caution-fg)" }}>
+                  {captureNote}
+                </p>
+              )}
               <Field label="Sportsbook at capture">
                 <TextInput value={values.sportsbookAtCapture} onChange={(e) => set("sportsbookAtCapture", e.target.value)} />
               </Field>

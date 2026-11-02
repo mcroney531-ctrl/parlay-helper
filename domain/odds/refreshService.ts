@@ -8,7 +8,7 @@ import { allocateRefreshAttempt } from "@/storage/indexeddb/repositories/metaRep
 import { changesPriceIdentity } from "@/domain/ideas/ideaService";
 import { missingOddsRequestFields } from "./refreshability";
 
-type OddsApiOutcome = {
+export type OddsApiOutcome = {
   marketKey: string;
   name: string;
   description: string | null;
@@ -139,6 +139,33 @@ function failureFromError(error: unknown): RefreshRequestFailure {
  * guessed) when identity can't be confirmed.
  */
 export function matchOutcome(idea: CapturedIdea, outcomes: OddsApiOutcome[]): OddsApiOutcome | null {
+  const match = matchLeg(idea, outcomes);
+  return "outcome" in match ? match.outcome : null;
+}
+
+/**
+ * Why no outcome was matched: the book doesn't list the market at all, the
+ * market is listed but not at this leg's line (the line is part of the bet),
+ * or this leg couldn't be identified in it (no player name, player not in the
+ * market, an ambiguous selection, or no line for a market that has lines).
+ */
+export type LegMatch = { outcome: OddsApiOutcome } | { miss: "market_not_listed" | "line_not_offered" | "unidentified" };
+
+/**
+ * EXACT LINE (Trevor/GPT 2026-11-02): in a market whose outcomes carry lines,
+ * only an outcome at the leg's own line (lineAtCapture) is this leg. A book
+ * that has moved its line to another number isn't offering this bet; the main
+ * line, or the first outcome with the right selection, is never substituted.
+ * A leg with no line in such a market can't be identified.
+ */
+export function matchLeg(idea: CapturedIdea, outcomes: OddsApiOutcome[]): LegMatch {
+  const found = matchOutcomeAtLine(idea, outcomes);
+  if (found !== "line_not_offered" && found !== null) return { outcome: found };
+  if (!outcomes.some((o) => o.marketKey === idea.marketKey)) return { miss: "market_not_listed" };
+  return { miss: found === "line_not_offered" ? "line_not_offered" : "unidentified" };
+}
+
+function matchOutcomeAtLine(idea: CapturedIdea, outcomes: OddsApiOutcome[]): OddsApiOutcome | "line_not_offered" | null {
   const forMarket = outcomes.filter((o) => o.marketKey === idea.marketKey);
   if (forMarket.length === 0) return null;
 
@@ -157,15 +184,19 @@ export function matchOutcome(idea: CapturedIdea, outcomes: OddsApiOutcome[]): Od
     if (byPlayerName.length > 0) candidates = byPlayerName;
   }
 
+  // A market with lines: only this leg's own line is this leg.
+  if (candidates.some((o) => o.point !== null)) {
+    if (idea.lineAtCapture === null) return null;
+    const atLine = candidates.filter((o) => o.point === idea.lineAtCapture);
+    if (atLine.length === 0) return "line_not_offered";
+    candidates = atLine;
+  }
+
   if (idea.selection) {
     // Same normalization as changesPriceIdentity, so an edit it calls cosmetic can't change the match.
     const selection = normalizeName(idea.selection);
     const bySelection = candidates.find((o) => normalizeName(o.name) === selection);
     if (bySelection) return bySelection;
-  }
-  if (idea.lineAtCapture !== null) {
-    const byPoint = candidates.find((o) => o.point === idea.lineAtCapture);
-    if (byPoint) return byPoint;
   }
   // Only auto-pick a lone remaining candidate; multiple undifferentiated
   // candidates left is exactly the ambiguity this function exists to avoid.
@@ -346,19 +377,21 @@ export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas:
         else if (outcome === "superseded") event.supersededIdeaIds.push(ideaId);
         continue;
       }
-      const outcome = matchOutcome(idea, result.outcomes);
-      // A bare unmatched outcome conflates four different situations. Only "the
-      // market key isn't in this response at all" is positive evidence the book
-      // doesn't list it (false); a listed market the matcher couldn't attach to
-      // this leg (no player name, player not in the market, or an ambiguous
-      // selection/line) is a matcher limitation, not evidence of absence, so it
-      // stays unknown (null) rather than false.
-      const listed = result.outcomes.some((o) => o.marketKey === idea.marketKey);
+      const match = matchLeg(idea, result.outcomes);
+      const outcome = "outcome" in match ? match.outcome : null;
+      // An unmatched leg is one of three situations. "The market key isn't in
+      // this response at all" and "the market is listed, with this player, but
+      // not at this leg's line" are positive evidence the book isn't offering
+      // this bet (false). A listed market the matcher couldn't attach to this
+      // leg (no player name, player not in the market, an ambiguous selection,
+      // no line) is a matcher limitation, not evidence of absence, so it stays
+      // unknown (null).
+      const miss = "miss" in match ? match.miss : null;
       const written = await mergeLiveContext(idea, candidate.sportsbook, { ...attempt, observation: true }, {
         eventId: idea.eventId,
         currentLine: outcome?.point ?? null,
         currentOddsAmerican: outcome?.priceAmerican ?? null,
-        marketAvailable: outcome !== null ? true : listed ? null : false,
+        marketAvailable: outcome !== null ? true : miss === "unidentified" ? null : false,
         oddsFetchedAt: result.fetchedAt,
         oddsSource: "odds-api",
         fetchedAt: result.fetchedAt,
@@ -367,9 +400,11 @@ export async function refreshOddsForCandidate(candidate: CandidateParlay, ideas:
           outcome === null
             ? [
                 ...warnings,
-                listed
-                  ? "Could not confirm which outcome belongs to this leg (player/selection unclear or ambiguous)."
-                  : "This sportsbook isn't listing this market for the game right now.",
+                miss === "line_not_offered"
+                  ? `This sportsbook isn't offering this bet at ${idea.lineAtCapture} right now.`
+                  : miss === "unidentified"
+                    ? "Could not confirm which outcome belongs to this leg (player/selection/line unclear or ambiguous)."
+                    : "This sportsbook isn't listing this market for the game right now.",
               ]
             : warnings,
       });

@@ -60,7 +60,7 @@ function liveContext(ideaId: string, oddsAmerican: number): LiveContext {
     ideaId,
     sportsbook: "FanDuel",
     eventId: "evt-1",
-    currentLine: 82.5,
+    currentLine: 80.5, // the leg's own line: a live price at another line isn't this leg's
     currentOddsAmerican: oddsAmerican,
     marketAvailable: true,
     playerStatus: null,

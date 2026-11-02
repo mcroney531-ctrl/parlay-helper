@@ -37,7 +37,7 @@ describe("finalizeCandidate", () => {
       ideaId: idea.id,
       sportsbook: "FanDuel",
       eventId: "evt-1",
-      currentLine: 82.5,
+      currentLine: 80.5, // a live price counts only at the leg's own line (exact-line rule)
       currentOddsAmerican: -120,
       marketAvailable: true,
       playerStatus: "Active",
@@ -62,7 +62,8 @@ describe("finalizeCandidate", () => {
 
     expect(finalized.legSnapshots).toHaveLength(1);
     expect(finalized.legSnapshots[0].lineAtCapture).toBe(80.5);
-    expect(finalized.legSnapshots[0].lineAtFinalize).toBe(82.5);
+    expect(finalized.legSnapshots[0].lineAtFinalize).toBe(80.5);
+    expect(finalized.legSnapshots[0].oddsAtFinalizeAmerican).toBe(-120);
     expect(finalized.estimatedOddsAmerican).not.toBeNull();
     expect(finalized.estimatedPayoutCents).not.toBeNull();
     expect(finalized.sportsbookBetId).toBe("abc123");

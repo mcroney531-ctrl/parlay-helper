@@ -23,11 +23,29 @@ export type CapturedIdea = {
   lineAtCapture: number | null;
   oddsAtCaptureAmerican: number | null;
   sportsbookAtCapture: string | null;
+  /**
+   * The bet the capture odds were entered for (chunk 4a): the capture price is
+   * a price source only while the idea still describes that bet. Kept even
+   * when it no longer applies (history). Absent on ideas saved before the
+   * field existed; null when there's no capture price. Optional and unindexed,
+   * so no schema version change. See domain/ideas/captureProposition.ts.
+   */
+  captureProposition?: CaptureProposition | null;
   confidence: Confidence;
   note: string;
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;
+};
+
+/** The bet-defining fields of an idea, as compared for capture prices (normalized: see captureProposition.ts). */
+export type CaptureProposition = {
+  league: string | null;
+  eventId: string | null;
+  marketKey: string | null;
+  playerName: string | null;
+  selection: string | null;
+  lineAtCapture: number | null;
 };
 
 export type LiveContext = {
@@ -137,7 +155,7 @@ export type SnapshotLegPrice =
       oddsAmerican: null;
       line: null;
       book: null;
-      unavailableReason?: "market_not_offered";
+      unavailableReason?: "market_not_offered" | "capture_for_other_bet";
     };
 
 export type FinalizedLegSnapshot = {

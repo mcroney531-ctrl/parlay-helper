@@ -91,7 +91,7 @@ describe("matchOutcome — selection normalization", () => {
     { marketKey: "totals", name: "Under", description: null, point: 47.5, priceAmerican: -105 },
   ];
   const totalsIdea = (selection: string) =>
-    makeIdea({ marketKey: "totals", playerName: null, selection, lineAtCapture: null });
+    makeIdea({ marketKey: "totals", playerName: null, selection, lineAtCapture: 47.5 });
 
   it("ignores surrounding whitespace in the selection, as it ignores case", () => {
     expect(matchOutcome(totalsIdea(" Over "), totals)).toMatchObject({ name: "Over", priceAmerican: -110 });

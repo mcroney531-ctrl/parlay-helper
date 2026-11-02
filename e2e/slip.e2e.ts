@@ -182,7 +182,7 @@ test("picking a game never guesses the player's team, and fills the opponent onl
   await page.goto("/ideas");
   await page.getByRole("button", { name: "Complete details" }).click();
   const sheet = page.getByRole("dialog", { name: "Complete details" });
-  await sheet.getByText("More details (game, odds, confidence, note)").click();
+  await sheet.getByText("More details (team, odds, confidence, note)").click();
 
   const team = sheet.getByLabel("Team", { exact: true });
   const opponent = sheet.getByLabel("Opponent", { exact: true });
@@ -222,7 +222,7 @@ test("picking a game never guesses the player's team, and fills the opponent onl
   await sheet.getByRole("button", { name: "Save details" }).click();
   await expect(sheet).toBeHidden();
   await page.getByRole("button", { name: "Complete details" }).click();
-  await page.getByText("More details (game, odds, confidence, note)").click();
+  await page.getByText("More details (team, odds, confidence, note)").click();
   await expect(page.getByLabel("Team", { exact: true })).toHaveValue("Seattle Seahawks");
   await expect(page.getByLabel("Opponent", { exact: true })).toHaveValue("Los Angeles Rams");
 });

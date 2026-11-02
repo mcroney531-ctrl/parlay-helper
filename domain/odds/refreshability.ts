@@ -1,15 +1,18 @@
 import type { CapturedIdea } from "@/domain/types";
 import { SUPPORTED_BOOK_NAMES, isRecognizedSportsbook } from "@/domain/sportsbook";
+import { MARKET_OPTIONS } from "@/integrations/odds-api/marketKeys";
 
 /**
- * Why a leg can't get a live price. The first three are details the idea is
- * missing, so refreshOddsForCandidate never sends it; unsupported_book means
+ * Why a leg can't get a live price. The first four are details the idea is
+ * missing, so refreshOddsForCandidate never sends it (no_line: a market that
+ * has lines, with none set; the line is part of the bet, so the leg can't be
+ * matched without it); unsupported_book means
  * the leg is sent but the provider has no prices for the slip's book. League
  * isn't checked for support because it is only ever picked from the supported
  * list. Nothing here blocks adding a leg to a slip: it only explains a price
  * that can't come.
  */
-export type PriceBlocker = "no_league" | "no_game" | "no_market" | "unsupported_book";
+export type PriceBlocker = "no_league" | "no_game" | "no_market" | "no_line" | "unsupported_book";
 
 /** The fields the odds request needs. The one definition shared by the refresh and the UI. */
 export function missingOddsRequestFields(idea: CapturedIdea): PriceBlocker[] {
@@ -17,6 +20,8 @@ export function missingOddsRequestFields(idea: CapturedIdea): PriceBlocker[] {
   if (!idea.eventId) missing.push("no_game");
   if (!idea.marketKey) missing.push("no_market");
   if (!idea.league) missing.push("no_league");
+  // Only known markets: whether a custom market key has lines isn't known here (matchLeg still refuses to guess).
+  if (idea.lineAtCapture === null && MARKET_OPTIONS.some((m) => m.key === idea.marketKey && m.requiresLine)) missing.push("no_line");
   return missing;
 }
 
@@ -30,6 +35,7 @@ const MISSING_TEXT: Record<Exclude<PriceBlocker, "unsupported_book">, string> = 
   no_game: "a game",
   no_market: "a market",
   no_league: "a league",
+  no_line: "a line",
 };
 
 /** One sentence for a leg card, or null when nothing blocks a live price. */

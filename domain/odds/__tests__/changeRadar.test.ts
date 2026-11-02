@@ -59,12 +59,25 @@ describe("buildChangeRadar", () => {
     expect(entries).toEqual([{ kind: "not_found", text: "No current data fetched yet for this leg." }]);
   });
 
-  it("reports line and odds changes since capture", () => {
-    const entries = buildChangeRadar(
-      makeIdea(),
-      makeLiveContext({ currentLine: 67.5, currentOddsAmerican: -120 }),
-    );
-    expect(entries.some((e) => e.kind === "line_change" && e.text.includes("67.5"))).toBe(true);
+  it("never shows a live price stored for another line as this leg's 'Now' (exact-line rule, chunk 4a)", () => {
+    // The line is part of the bet; the book's main line isn't shown as information (not now).
+    const entries = buildChangeRadar(makeIdea(), makeLiveContext({ currentLine: 67.5, currentOddsAmerican: -120 }));
+    expect(entries.some((e) => e.kind === "line_change" || e.kind === "odds_change")).toBe(false);
+    expect(entries.some((e) => e.text.includes("67.5") || e.text.includes("-120"))).toBe(false);
+  });
+
+  it("reports an odds change since capture at the leg's own line", () => {
+    const idea = makeIdea();
+    const entries = buildChangeRadar(idea, makeLiveContext({ currentLine: idea.lineAtCapture, currentOddsAmerican: -135 }));
+    expect(entries.some((e) => e.kind === "odds_change" && e.text.includes("-135"))).toBe(true);
+  });
+
+  it("doesn't compare against a capture price entered for a different bet (chunk 4a)", () => {
+    const idea = makeIdea({
+      captureProposition: { league: null, eventId: null, marketKey: "player_receptions", playerName: null, selection: null, lineAtCapture: null },
+    });
+    const entries = buildChangeRadar(idea, makeLiveContext({ currentLine: idea.lineAtCapture, currentOddsAmerican: -135 }));
+    expect(entries.some((e) => e.kind === "odds_change" || e.kind === "cross_book")).toBe(false);
   });
 
   it("reports player status changes", () => {

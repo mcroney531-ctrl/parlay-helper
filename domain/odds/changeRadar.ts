@@ -1,5 +1,6 @@
 import type { CapturedIdea, LiveContext } from "@/domain/types";
 import { compareSportsbooks } from "@/domain/sportsbook";
+import { captureIsEligible } from "@/domain/ideas/captureProposition";
 
 export type ChangeRadarEntry = {
   kind: "line_change" | "odds_change" | "cross_book" | "status_change" | "game_change" | "stale" | "not_found" | "ok";
@@ -39,6 +40,15 @@ export function buildChangeRadar(
 
   const liveBook = liveContext.sportsbookLabel ?? liveContext.sportsbook;
 
+  // Like with like only (chunk 4a). A capture price entered for a different
+  // bet is not this bet's capture. A live price stored for another line is not
+  // this leg's: the line is part of the bet, and the main line isn't shown as
+  // information (not now; Trevor/GPT 2026-11-02).
+  const capturedOdds = captureIsEligible(idea) ? idea.oddsAtCaptureAmerican : null;
+  const liveIsThisLine = liveContext.currentLine === null || liveContext.currentLine === idea.lineAtCapture;
+  const liveLine = liveIsThisLine ? liveContext.currentLine : null;
+  const liveOdds = liveIsThisLine ? liveContext.currentOddsAmerican : null;
+
   // Odds age comes from oddsFetchedAt only. fetchedAt is "whichever provider
   // wrote last" and the player-status refresh overwrites it with the Sleeper
   // snapshot's own time, so it says nothing reliable about the price.
@@ -50,8 +60,8 @@ export function buildChangeRadar(
   const marketGone = liveContext.marketAvailable === false;
   if (marketGone) {
     const lastSeen =
-      liveContext.currentOddsAmerican !== null
-        ? ` Last price seen: ${formatAmerican(liveContext.currentOddsAmerican)}${oddsAge !== null ? ` (${oddsAge} min ago)` : ""}.`
+      liveOdds !== null
+        ? ` Last price seen: ${formatAmerican(liveOdds)}${oddsAge !== null ? ` (${oddsAge} min ago)` : ""}.`
         : "";
     entries.push({
       kind: "not_found",
@@ -62,13 +72,13 @@ export function buildChangeRadar(
   const lineChanged =
     !marketGone &&
     idea.lineAtCapture !== null &&
-    liveContext.currentLine !== null &&
-    idea.lineAtCapture !== liveContext.currentLine;
+    liveLine !== null &&
+    idea.lineAtCapture !== liveLine;
   const oddsChanged =
     !marketGone &&
-    idea.oddsAtCaptureAmerican !== null &&
-    liveContext.currentOddsAmerican !== null &&
-    idea.oddsAtCaptureAmerican !== liveContext.currentOddsAmerican;
+    capturedOdds !== null &&
+    liveOdds !== null &&
+    capturedOdds !== liveOdds;
 
   // The captured line and odds were observed at idea.sportsbookAtCapture; the
   // live values are for the slip's book. Only a same-book difference is a
@@ -86,12 +96,12 @@ export function buildChangeRadar(
     if (captureBook === "same") {
       entries.push({
         kind: lineChanged ? "line_change" : "odds_change",
-        text: `Captured: ${value(idea.lineAtCapture, idea.oddsAtCaptureAmerican)} · Now: ${value(liveContext.currentLine, liveContext.currentOddsAmerican)}`,
+        text: `Captured: ${value(idea.lineAtCapture, capturedOdds)} · Now: ${value(liveLine, liveOdds)}`,
       });
     } else if (captureBook === "different") {
       entries.push({
         kind: "cross_book",
-        text: `Captured at ${captureBookText}: ${value(idea.lineAtCapture, idea.oddsAtCaptureAmerican)} · Now at ${liveBook}: ${value(liveContext.currentLine, liveContext.currentOddsAmerican)} — different books, not a change since capture.`,
+        text: `Captured at ${captureBookText}: ${value(idea.lineAtCapture, capturedOdds)} · Now at ${liveBook}: ${value(liveLine, liveOdds)} — different books, not a change since capture.`,
       });
     } else {
       const recorded = captureBook === "unverified";
@@ -101,12 +111,12 @@ export function buildChangeRadar(
           : "capture book not recorded";
         entries.push({
           kind: "line_change",
-          text: `Captured: ${value(idea.lineAtCapture, null)} · Now: ${value(liveContext.currentLine, null)} (${qualifier})`,
+          text: `Captured: ${value(idea.lineAtCapture, null)} · Now: ${value(liveLine, null)} (${qualifier})`,
         });
       }
       if (oddsChanged) {
-        const captured = value(null, idea.oddsAtCaptureAmerican);
-        const now = value(null, liveContext.currentOddsAmerican);
+        const captured = value(null, capturedOdds);
+        const now = value(null, liveOdds);
         entries.push({
           kind: "cross_book",
           text: recorded
@@ -131,7 +141,7 @@ export function buildChangeRadar(
   if (oddsAge === null) {
     // A stored price with no fetch time predates oddsFetchedAt: its age is
     // unknown, which is not the same as never having been fetched.
-    if (liveContext.currentOddsAmerican !== null) {
+    if (liveOdds !== null) {
       // Only suggest a refresh when one could actually fetch a price for this leg.
       entries.push({ kind: "stale", text: priceBlocked ? "Odds age unknown." : "Odds age unknown — refresh to update." });
     } else if (!priceBlocked) {
@@ -147,8 +157,8 @@ export function buildChangeRadar(
 
   if (entries.length === 0 && oddsAge !== null) {
     const compared =
-      (idea.lineAtCapture !== null && liveContext.currentLine !== null) ||
-      (idea.oddsAtCaptureAmerican !== null && liveContext.currentOddsAmerican !== null);
+      (idea.lineAtCapture !== null && liveLine !== null) ||
+      (capturedOdds !== null && liveOdds !== null);
     let text = `No change since capture. Checked ${oddsAge} min ago.`;
     if (compared && captureBook === "different") {
       text = `Matches the capture values, but they were captured at ${captureBookText} and this is ${liveBook}. Checked ${oddsAge} min ago.`;

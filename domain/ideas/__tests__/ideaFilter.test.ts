@@ -8,7 +8,7 @@ import { missingDetailsText } from "@/domain/odds/refreshability";
 function idea(id: string, o: Partial<CapturedIdea> = {}): CapturedIdea {
   return {
     id, rawText: id, sport: "NFL", league: "NFL", eventId: "evt", marketKey: "player_reception_yds", marketLabel: null,
-    playerName: null, playerId: null, team: null, opponent: null, selection: null, lineAtCapture: null,
+    playerName: null, playerId: null, team: null, opponent: null, selection: null, lineAtCapture: 63.5,
     oddsAtCaptureAmerican: null, sportsbookAtCapture: null, confidence: null, note: "", slateDate: null,
     detailsStatus: "structured", createdAt: "2026-10-31T00:00:00.000Z", updatedAt: "2026-10-31T00:00:00.000Z", archivedAt: null, ...o,
   } as unknown as CapturedIdea;
@@ -53,6 +53,8 @@ describe("missing details text", () => {
   it("names exactly what an idea lacks for live odds, and nothing when complete", () => {
     expect(missingDetailsText(idea("x"))).toBeNull();
     expect(missingDetailsText(idea("x", { eventId: null }))).toBe("Needs a game to refresh odds");
+    // A market with lines needs the line: it is part of the bet (exact-line rule).
+    expect(missingDetailsText(idea("x", { lineAtCapture: null }))).toBe("Needs a line to refresh odds");
     expect(missingDetailsText(idea("x", { eventId: null, marketKey: null, league: null }))).toBe(
       "Needs a game, a market and a league to refresh odds",
     );
