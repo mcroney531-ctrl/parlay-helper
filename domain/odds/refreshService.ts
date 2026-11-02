@@ -163,6 +163,11 @@ export type LegMatch =
  * so a leg's line missing from it says nothing about whether the book offers
  * that line as an alternate (B's review of 74be340, R1).
  */
+/** The provider's player-prop markets are all keyed player_*. */
+function isPlayerMarketKey(marketKey: string | null): boolean {
+  return Boolean(marketKey?.startsWith("player_"));
+}
+
 export function isAlternateMarketKey(marketKey: string | null): boolean {
   return Boolean(marketKey && (marketKey.endsWith("_alternate") || marketKey.startsWith("alternate_")));
 }
@@ -187,22 +192,27 @@ function matchOutcomeAtLine(idea: CapturedIdea, outcomes: OddsApiOutcome[]): Odd
   if (forMarket.length === 0) return null;
 
   const isPlayerPropMarket = forMarket.some((o) => o.description !== null);
+  // A player market with no lines (anytime / first TD scorer) is a yes/no bet
+  // on the player, so a blank selection means Yes in either provider format
+  // (B's re-review of 85ab740).
+  const scorerMarket = isPlayerMarketKey(idea.marketKey) && !forMarket.some((o) => o.point !== null);
+  const selection = idea.selection ? normalizeName(idea.selection) : scorerMarket ? "yes" : null;
   let candidates = forMarket;
 
   if (isPlayerPropMarket) {
     if (!idea.playerName) return null; // can't safely pick a player without an identity to match
     candidates = forMarket.filter((o) => o.description && normalizeName(o.description) === normalizeName(idea.playerName as string));
     if (candidates.length === 0) return null;
-  } else if (idea.playerName) {
-    // No description field, but this idea has a player (e.g. anytime-TD
-    // style markets where `name` IS the player). Require a name match
-    // before falling back to selection/point.
+  } else if (idea.playerName && scorerMarket) {
+    // No description field in a scorer market: each outcome's `name` IS a
+    // player, and that outcome is the player's "yes". A yes leg takes the one
+    // outcome; a "no" leg is never given the yes price. Only scorer markets:
+    // quick-add can put a TEAM in Player ("Seattle Seahawks +6.5"), and in h2h
+    // or spreads a team-named outcome must still go through the line and
+    // selection checks below.
     const byPlayerName = forMarket.filter((o) => normalizeName(o.name) === normalizeName(idea.playerName as string));
     if (byPlayerName.length > 0) {
-      // Each outcome IS a player, so it is that player's "yes": a yes (or no
-      // selection) leg takes the one outcome, and a "no" leg is never given the
-      // yes price.
-      if (idea.selection && normalizeName(idea.selection) !== "yes") return null;
+      if (selection !== "yes") return null;
       return byPlayerName.length === 1 ? byPlayerName[0] : null;
     }
   }
@@ -215,12 +225,11 @@ function matchOutcomeAtLine(idea: CapturedIdea, outcomes: OddsApiOutcome[]): Odd
     candidates = atLine;
   }
 
-  if (idea.selection) {
+  if (selection) {
     // Same normalization as changesPriceIdentity, so an edit it calls cosmetic can't change the match.
     // Exactly one outcome must match the selection (B's review of 74be340, R2):
     // none (e.g. an Under leg where only Over is listed) is never the other
     // side, and two (the same Over at two prices) is never the first one.
-    const selection = normalizeName(idea.selection);
     const bySelection = candidates.filter((o) => normalizeName(o.name) === selection);
     return bySelection.length === 1 ? bySelection[0] : null;
   }

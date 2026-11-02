@@ -95,6 +95,42 @@ describe("matchLeg: only the leg's own line is the leg", () => {
     const td: OddsApiOutcome = { marketKey: "player_anytime_td", name: "Yes", description: "Puka Nacua", point: null, priceAmerican: 140 };
     expect(matchOutcome(makeIdea({ marketKey: "player_anytime_td", selection: "Yes", lineAtCapture: null }), [td])).toEqual(td);
   });
+
+  it("a blank selection on a scorer market means Yes, in both provider formats", () => {
+    const blankTd = makeIdea({ marketKey: "player_anytime_td", selection: null, lineAtCapture: null });
+    // Format 1: the player in description, Yes/No in name.
+    const yes: OddsApiOutcome = { marketKey: "player_anytime_td", name: "Yes", description: "Puka Nacua", point: null, priceAmerican: 140 };
+    const no: OddsApiOutcome = { ...yes, name: "No", priceAmerican: -190 };
+    expect(matchOutcome(blankTd, [yes, no])).toEqual(yes);
+    expect(matchLeg(blankTd, [no])).toEqual({ miss: "unidentified" }); // a lone No is never taken as the bet
+    // Format 2: each outcome's name IS the player.
+    const named: OddsApiOutcome = { marketKey: "player_anytime_td", name: "Puka Nacua", description: null, point: null, priceAmerican: 140 };
+    expect(matchOutcome(blankTd, [named])).toEqual(named);
+  });
+});
+
+// Quick-add can store a TEAM in Player ("Seattle Seahawks +6.5" gives Player
+// "Seattle Seahawks"). Game markets' outcomes are named for teams, so the
+// "name is the player" rule must not apply to them (B's re-review of 85ab740).
+describe("matchLeg: a team in Player on a game market", () => {
+  const team = { playerName: "Seattle Seahawks", league: "NFL" };
+  const ml = (name: string, priceAmerican: number): OddsApiOutcome => ({ marketKey: "h2h", name, description: null, point: null, priceAmerican });
+  const spread = (name: string, point: number, priceAmerican: number): OddsApiOutcome => ({ marketKey: "spreads", name, description: null, point, priceAmerican });
+
+  it("h2h: the selected team's moneyline is matched", () => {
+    const idea = makeIdea({ ...team, marketKey: "h2h", selection: "Seattle Seahawks", lineAtCapture: null });
+    expect(matchOutcome(idea, [ml("Seattle Seahawks", 210), ml("Los Angeles Rams", -250)])).toMatchObject({ name: "Seattle Seahawks", priceAmerican: 210 });
+  });
+
+  it("spreads: the selected team at the offered line is matched", () => {
+    const idea = makeIdea({ ...team, marketKey: "spreads", selection: "Seattle Seahawks", lineAtCapture: 6.5 });
+    expect(matchOutcome(idea, [spread("Seattle Seahawks", 6.5, -110), spread("Los Angeles Rams", -6.5, -110)])).toMatchObject({ name: "Seattle Seahawks", point: 6.5 });
+  });
+
+  it("spreads: a blank selection at 3.5 when only 6.5 is offered is a line miss, never the +6.5 price", () => {
+    const idea = makeIdea({ ...team, marketKey: "spreads", selection: null, lineAtCapture: 3.5 });
+    expect(matchLeg(idea, [spread("Seattle Seahawks", 6.5, -110), spread("Los Angeles Rams", -6.5, -110)])).toEqual({ miss: "line_not_offered", offeredLines: [-6.5, 6.5] });
+  });
 });
 
 /** Refreshes one idea against a stubbed /api/odds that returns `outcomes` for its event; resolves to the stored row. */
