@@ -15,10 +15,13 @@ export function EventPickerField({
   eventId,
   league,
   onChange,
+  onSelectedTeams,
 }: {
   eventId: string;
   league: string;
   onChange: (eventId: string, meta?: { homeTeam: string; awayTeam: string }) => void;
+  /** The selected game's sides once the list has loaded (a game saved earlier included); null when none is selected. Not a change of game. */
+  onSelectedTeams?: (teams: { homeTeam: string; awayTeam: string } | null) => void;
 }) {
   const [events, setEvents] = useState<EventOption[]>([]);
   const [status, setStatus] = useState<"loading" | "ok" | "unavailable">("loading");
@@ -54,6 +57,11 @@ export function EventPickerField({
   }, [league]);
 
   const selected = events.find((e) => e.eventId === eventId);
+  const selectedHome = selected?.homeTeam;
+  const selectedAway = selected?.awayTeam;
+  useEffect(() => {
+    onSelectedTeams?.(selectedHome !== undefined && selectedAway !== undefined ? { homeTeam: selectedHome, awayTeam: selectedAway } : null);
+  }, [selectedHome, selectedAway, onSelectedTeams]);
   const filtered =
     filter.trim().length === 0
       ? events

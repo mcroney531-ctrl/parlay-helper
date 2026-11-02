@@ -1,3 +1,5 @@
+import { resolveNflTeam } from "@/domain/teams";
+
 // Visual-only team identity pairs for the Builder's prop-card rail/avatar
 // ring. Never used to imply a recommendation — purely brand color.
 export type TeamColorPair = {
@@ -22,5 +24,6 @@ export const defaultTeamColors: TeamColorPair = {
 // unknown, missing, or non-NFL team codes never break card rendering.
 export function teamColorsFor(team: string | null): TeamColorPair {
   if (!team) return defaultTeamColors;
-  return nflTeamColors[team.toUpperCase()] ?? defaultTeamColors;
+  // Team is stored as a full name since chunk 4b ("Los Angeles Rams"); older ideas hold Sleeper's code.
+  return nflTeamColors[resolveNflTeam(team)?.code ?? team.toUpperCase()] ?? defaultTeamColors;
 }

@@ -1,3 +1,4 @@
+import { resolveNflTeam } from "@/domain/teams";
 import { CONCENTRATION_MIN_LEGS, CONCENTRATION_SHARE_THRESHOLD } from "./config";
 
 export type ConcentrationLeg = {
@@ -48,7 +49,8 @@ export function detectConcentrationSignals(legs: ConcentrationLeg[]): Concentrat
 
   const dimensions: [ConcentrationDimension, (leg: ConcentrationLeg) => string | null][] = [
     ["event", (leg) => leg.eventId],
-    ["team", (leg) => leg.team],
+    // One key per team however it's stored: Sleeper's code (older ideas) or the full name (chunk 4b).
+    ["team", (leg) => (leg.team ? (resolveNflTeam(leg.team)?.name ?? leg.team) : null)],
     ["kickoff_window", (leg) => leg.kickoffWindow],
   ];
 

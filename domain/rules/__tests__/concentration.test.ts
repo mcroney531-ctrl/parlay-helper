@@ -34,9 +34,19 @@ describe("detectConcentrationSignals", () => {
       leg("3", "evt-a", "BAL", "sun-1pm"),
       leg("4", "evt-b", "KC", "sun-4pm"),
     ]);
-    const teamSignal = signals.find((s) => s.dimension === "team" && s.value === "BAL");
+    const teamSignal = signals.find((s) => s.dimension === "team" && s.value === "Baltimore Ravens");
     expect(teamSignal).toBeDefined();
     expect(teamSignal?.shareRatio).toBeCloseTo(0.75);
+  });
+
+  it("counts a team once however it's stored: an older idea's code and a full name (chunk 4b)", () => {
+    const signals = detectConcentrationSignals([
+      leg("1", "evt-a", "LAR", "sun-1pm"),
+      leg("2", "evt-b", "Los Angeles Rams", "sun-4pm"),
+      leg("3", "evt-c", "KC", "mon-8pm"),
+      leg("4", "evt-d", "SF", "thu-8pm"),
+    ]);
+    expect(signals.find((s) => s.dimension === "team")).toMatchObject({ value: "Los Angeles Rams", ideaIds: ["1", "2"] });
   });
 
   it("does not trigger below the 50% threshold", () => {

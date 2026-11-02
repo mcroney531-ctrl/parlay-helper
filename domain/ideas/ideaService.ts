@@ -33,7 +33,7 @@ export async function captureInstantIdea(rawText: string): Promise<CapturedIdea>
     slateDate: null,
     playerId: null,
     playerName: hints.playerName,
-    team: null,
+    team: hints.team,
     opponent: null,
     eventId: null,
     marketKey: null,

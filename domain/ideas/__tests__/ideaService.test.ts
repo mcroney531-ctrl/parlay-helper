@@ -31,6 +31,11 @@ describe("captureInstantIdea", () => {
   it("rejects empty text", async () => {
     await expect(captureInstantIdea("   ")).rejects.toThrow();
   });
+
+  it("stores team-first text's team as Team, not Player (chunk 4b)", async () => {
+    const idea = await captureInstantIdea("Seattle Seahawks +6.5");
+    expect(idea).toMatchObject({ team: "Seattle Seahawks", playerName: null, opponent: null });
+  });
 });
 
 describe("updateIdeaDetails", () => {

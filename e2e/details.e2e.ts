@@ -83,3 +83,67 @@ test("switching to a market with no line clears the line, and the old capture pr
   await page.goto("/slip");
   await expect(page.getByText("Price +140 · captured, book not recorded (no live price)")).toBeVisible();
 });
+
+test("Team and Opponent follow the player and the game; a market or line change, and typed values, don't move them", async ({ page }) => {
+  // Chunk 4b. Sleeper gives a player's team as a code; the sheet stores the full name, as the game's sides are named.
+  await page.route("**/api/sleeper?search=*", (route) =>
+    route.fulfill({
+      json: {
+        results: [
+          { playerId: "p1", fullName: "Puka Nacua", team: "LAR", position: "WR" },
+          { playerId: "p2", fullName: "DK Metcalf", team: "PIT", position: "WR" },
+        ],
+      },
+    }),
+  );
+  // Saved with the game Seahawks @ Rams, but an opponent left over from another game.
+  await seedV2(page, {
+    ideas: [idea("i1", "", { rawText: "puka overs", playerName: null, eventId: "ev1", team: "Los Angeles Rams", opponent: "San Francisco 49ers" })],
+    slips: [],
+  });
+  await page.goto("/ideas");
+  await page.getByRole("button", { name: /Complete details|Edit details/ }).click();
+  const sheet = page.getByRole("dialog", { name: /Complete details|Edit details/ });
+  await sheet.getByText("More details (team, odds, confidence, note)").click();
+  const team = sheet.getByLabel("Team", { exact: true });
+  const opponent = sheet.getByLabel("Opponent", { exact: true });
+  const player = sheet.getByRole("combobox", { name: "Player" });
+  await expect(sheet.getByRole("combobox", { name: "Game" })).toHaveValue(/Seattle Seahawks @ Los Angeles Rams/);
+  const pickPlayer = async (search: string, name: string) => {
+    await player.fill(search);
+    await sheet.getByRole("option", { name: new RegExp(name) }).click();
+  };
+
+  // A market or line change recomputes nothing, even where a recompute would differ.
+  await sheet.getByLabel("Market").selectOption({ label: "Receptions" });
+  await sheet.getByLabel("Line at capture").fill("5.5");
+  await expect(team).toHaveValue("Los Angeles Rams");
+  await expect(opponent).toHaveValue("San Francisco 49ers");
+
+  // Picking a player sets Team from the player's team, and Opponent from the game.
+  await pickPlayer("Puka", "Puka Nacua");
+  await expect(team).toHaveValue("Los Angeles Rams");
+  await expect(opponent).toHaveValue("Seattle Seahawks");
+
+  // A player whose team isn't in this game: their Team, and no Opponent guessed.
+  await sheet.getByText("Change", { exact: true }).click();
+  await pickPlayer("Metcalf", "DK Metcalf");
+  await expect(team).toHaveValue("Pittsburgh Steelers");
+  await expect(opponent).toHaveValue("");
+
+  // A Team the user typed sticks through a player change; the Opponent follows it.
+  await team.fill("Seattle Seahawks");
+  await sheet.getByText("Change", { exact: true }).click();
+  await pickPlayer("Puka", "Puka Nacua");
+  await expect(team).toHaveValue("Seattle Seahawks");
+  await expect(opponent).toHaveValue("Los Angeles Rams");
+  await sheet.getByLabel("Line at capture").fill("6.5");
+  await expect(team).toHaveValue("Seattle Seahawks");
+
+  await sheet.getByRole("button", { name: /^Save/ }).click();
+  await expect(sheet).toBeHidden();
+  await page.getByRole("button", { name: /Complete details|Edit details/ }).click();
+  await sheet.getByText("More details (team, odds, confidence, note)").click();
+  await expect(team).toHaveValue("Seattle Seahawks");
+  await expect(opponent).toHaveValue("Los Angeles Rams");
+});

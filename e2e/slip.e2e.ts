@@ -169,7 +169,7 @@ test("Start a new slip makes the new slip current, even with another draft and n
   await expect(slipTab(page, "Sunday Core")).toHaveAttribute("aria-selected", "false");
 });
 
-test("picking a game never guesses the player's team, and fills the opponent only when the team names a side", async ({ page }) => {
+test("picking a game never guesses the player's team; it fills the opponent when the team names a side, never over a typed one", async ({ page }) => {
   await page.route("**/api/events?league=NFL", (route) =>
     route.fulfill({
       json: {
@@ -204,16 +204,19 @@ test("picking a game never guesses the player's team, and fills the opponent onl
   await pickGame();
   await expect(opponent).toHaveValue("Seattle Seahawks");
 
-  // Team names the away side: the opponent is the home side.
+  // Clearing the game clears the opponent it filled in (chunk 4b: a game change recomputes it).
   await sheet.getByRole("button", { name: "Clear game" }).click();
+  await expect(opponent).toHaveValue("");
+
+  // Team names the away side: the opponent is the home side.
   await team.fill("Seattle Seahawks");
-  await opponent.fill("");
   await pickGame();
   await expect(opponent).toHaveValue("Los Angeles Rams");
 
-  // An opponent the user typed is kept.
-  await sheet.getByRole("button", { name: "Clear game" }).click();
+  // An opponent the user typed is kept, through clearing and picking the game.
   await opponent.fill("Somebody Else");
+  await sheet.getByRole("button", { name: "Clear game" }).click();
+  await expect(opponent).toHaveValue("Somebody Else");
   await pickGame();
   await expect(opponent).toHaveValue("Somebody Else");
 
